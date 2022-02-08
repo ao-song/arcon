@@ -5,10 +5,12 @@ use crate::{
     VecState,
 };
 
+// todo, update with tikv
 use rocksdb::{
     checkpoint::Checkpoint, ColumnFamily, ColumnFamilyDescriptor, DBPinnableSlice, Options,
     SliceTransform, WriteBatch, WriteOptions, DB,
 };
+
 use std::{
     cell::UnsafeCell,
     collections::HashSet,
@@ -16,24 +18,27 @@ use std::{
     path::{Path, PathBuf},
 };
 
-unsafe impl Send for Rocks {}
-unsafe impl Sync for Rocks {}
+// delete?
+// unsafe impl Send for Rocks {}
+// unsafe impl Sync for Rocks {}
 
 #[derive(Debug)]
-pub struct Rocks {
+pub struct Tikv {
+    // todo, some subtitution of DB in tikv
     inner: UnsafeCell<DB>,
     restored: bool,
     name: String,
 }
 
 // we use epochs, so WAL is useless for us
+// todo, what is WriteOptions in tikv?
 fn default_write_opts() -> WriteOptions {
     let mut res = WriteOptions::default();
     res.disable_wal(true);
     res
 }
 
-impl Rocks {
+impl Tikv {
     #[inline(always)]
     #[allow(clippy::mut_from_ref)]
     fn db_mut(&self) -> &mut DB {
