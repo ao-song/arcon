@@ -11,6 +11,8 @@ use rocksdb::{
     SliceTransform, WriteBatch, WriteOptions, DB,
 };
 
+use tikv_client::{RawClient, TransactionClient, Error};
+
 use std::{
     cell::UnsafeCell,
     collections::HashSet,
@@ -18,14 +20,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-// delete?
-// unsafe impl Send for Rocks {}
-// unsafe impl Sync for Rocks {}
-
 #[derive(Debug)]
 pub struct Tikv {
-    // todo, some subtitution of DB in tikv
-    inner: UnsafeCell<DB>,
+    tran_client: TransactionClient,
+    raw_client: RawClient,
     restored: bool,
     name: String,
 }
@@ -39,27 +37,6 @@ fn default_write_opts() -> WriteOptions {
 }
 
 impl Tikv {
-    #[inline(always)]
-    #[allow(clippy::mut_from_ref)]
-    fn db_mut(&self) -> &mut DB {
-        unsafe { &mut (*self.inner.get()) }
-    }
-
-    #[inline(always)]
-    fn db(&self) -> &DB {
-        unsafe { &(*self.inner.get()) }
-    }
-
-    #[inline]
-    fn get_cf_handle(&self, cf_name: impl AsRef<str>) -> Result<&ColumnFamily> {
-        let cf_name = cf_name.as_ref();
-        self.db()
-            .cf_handle(cf_name)
-            .with_context(|| RocksMissingColumnFamily {
-                cf_name: cf_name.to_string(),
-            })
-    }
-
     #[inline]
     fn get(
         &self,
