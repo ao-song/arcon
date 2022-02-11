@@ -5,13 +5,9 @@ use crate::{
     VecState,
 };
 
-// todo, update with tikv
-use rocksdb::{
-    checkpoint::Checkpoint, ColumnFamily, ColumnFamilyDescriptor, DBPinnableSlice, Options,
-    SliceTransform, WriteBatch, WriteOptions, DB,
-};
-
 use tikv_client::{RawClient, TransactionClient, Error};
+
+use tokio::runtime::Runtime;
 
 use std::{
     cell::UnsafeCell,
@@ -22,19 +18,20 @@ use std::{
 
 #[derive(Debug)]
 pub struct Tikv {
-    tran_client: TransactionClient,
+    txn_client: TransactionClient,
     raw_client: RawClient,
     restored: bool,
     name: String,
 }
 
-// we use epochs, so WAL is useless for us
-// todo, what is WriteOptions in tikv?
-fn default_write_opts() -> WriteOptions {
-    let mut res = WriteOptions::default();
-    res.disable_wal(true);
-    res
-}
+// Create the tokio runtime which will be used to block on the async
+// tikv operations
+let rt  = Runtime::new().unwrap();
+
+
+// What is the Handle? What info the meta key contains here?
+// How this state be used in arcon maybe a brief overview of arcon will help?
+// !!! use just raw tikv client as it support cf?
 
 impl Tikv {
     #[inline]
