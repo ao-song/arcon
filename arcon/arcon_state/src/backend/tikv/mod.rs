@@ -18,7 +18,7 @@ use std::{
 
 #[derive(Debug)]
 pub struct Tikv {
-    txn_client: TransactionClient,
+    // txn_client: TransactionClient,
     raw_client: RawClient,
     restored: bool,
     name: String,
@@ -32,6 +32,7 @@ let rt  = Runtime::new().unwrap();
 // What is the Handle? What info the meta key contains here?
 // How this state be used in arcon maybe a brief overview of arcon will help?
 // !!! use just raw tikv client as it support cf?
+// create with path but for tikv it should be a vector of IP addresses?
 
 impl Tikv {
     #[inline]
@@ -115,7 +116,7 @@ where
     opts
 }
 
-impl Backend for Rocks {
+impl Backend for Tikv {
     fn name(&self) -> &str {
         self.name.as_str()
     }
@@ -124,35 +125,15 @@ impl Backend for Rocks {
     where
         Self: Sized,
     {
-        let mut opts = Options::default();
-        opts.create_if_missing(true);
+        // For Tikv it is IP addresses here, use path string store the IP
+        let client = rt.block_on(
+            RawClient::new(vec![path.to_str().unwrap()]))?;
 
-        let path: PathBuf = path.into();
-        if !path.exists() {
-            fs::create_dir_all(&path)?;
-        }
-
-        let column_families: HashSet<String> = match DB::list_cf(&opts, &path) {
-            Ok(cfs) => cfs.into_iter().filter(|n| n != "default").collect(),
-            // TODO: possibly platform-dependant error message check
-            Err(e) if e.to_string().contains("No such file or directory") => HashSet::new(),
-            Err(e) => return Err(e.into()),
-        };
-
-        let cfds = if !column_families.is_empty() {
-            column_families
-                .into_iter()
-                .map(|name| ColumnFamilyDescriptor::new(name, Options::default()))
-                .collect()
-        } else {
-            vec![ColumnFamilyDescriptor::new("default", Options::default())]
-        };
-        Ok(Rocks {
-            inner: UnsafeCell::new(DB::open_cf_descriptors(&opts, &path, cfds)?),
+        Ok(Sled {
+            client,
             restored: false,
             name,
         })
-    }
 
     fn restore(live_path: &Path, checkpoint_path: &Path, name: String) -> Result<Self>
     where
