@@ -92,13 +92,6 @@ impl Tikv {
         let cf = self.get_cf_handle(cf.as_ref())?;
         Ok(self.db().get_pinned_cf(cf, key)?.is_some())
     }
-
-    fn create_column_family(&self, cf_name: &str, opts: Options) -> Result<()> {
-        if self.db().cf_handle(cf_name).is_none() {
-            self.db_mut().create_cf(cf_name, &opts)?;
-        }
-        Ok(())
-    }
 }
 
 fn common_options<IK, N>() -> Options
@@ -129,7 +122,7 @@ impl Backend for Tikv {
         let client = rt.block_on(
             RawClient::new(vec![path.to_str().unwrap()]))?;
 
-        Ok(Sled {
+        Ok(Tikv {
             client,
             restored: false,
             name,
@@ -139,57 +132,17 @@ impl Backend for Tikv {
     where
         Self: Sized,
     {
-        fs::create_dir_all(live_path)?;
-
-        ensure!(
-            fs::read_dir(live_path)?.next().is_none(),
-            RocksRestoreDirNotEmpty { dir: &(*live_path) }
-        );
-
-        let mut target_path: PathBuf = live_path.into();
-        target_path.push("__DUMMY"); // the file name is replaced inside the loop below
-        for entry in fs::read_dir(checkpoint_path)? {
-            let entry = entry?;
-
-            assert!(entry
-                .file_type()
-                .expect("Cannot read entry metadata")
-                .is_file());
-
-            let source_path = entry.path();
-            // replaces the __DUMMY from above the loop
-            target_path.set_file_name(
-                source_path
-                    .file_name()
-                    .expect("directory entry with no name?"),
-            );
-
-            fs::copy(&source_path, &target_path)?;
-        }
-
-        Rocks::create(live_path, name).map(|mut r| {
-            r.restored = true;
-            r
-        })
+        // This method is ignored for TiKV
+        Ok(self.create(live_path, name))
     }
 
     fn was_restored(&self) -> bool {
+        // This method is ignored for TiKV
         self.restored
     }
 
-    fn checkpoint(&self, checkpoint_path: &Path) -> Result<()> {
-        let db = self.db();
-        db.flush()?;
-
-        let checkpointer = Checkpoint::new(db)?;
-
-        if checkpoint_path.exists() {
-            // TODO: add a warning log here
-            // warn!(logger, "Checkpoint path {:?} exists, deleting");
-            fs::remove_dir_all(checkpoint_path)?
-        }
-
-        checkpointer.create_checkpoint(checkpoint_path)?;
+    fn checkpoint(&self, checkpoint_path: &Path) -> Result<()> {       
+        // This method is ignored for TiKV 
         Ok(())
     }
 
@@ -198,9 +151,6 @@ impl Backend for Tikv {
         handle: &'s mut Handle<ValueState<T>, IK, N>,
     ) {
         handle.registered = true;
-        let opts = common_options::<IK, N>();
-        self.create_column_family(&handle.id, opts)
-            .expect("Could not create column family");
     }
 
     fn register_map_handle<'s, K: Key, V: Value, IK: Metakey, N: Metakey>(
@@ -208,9 +158,6 @@ impl Backend for Tikv {
         handle: &'s mut Handle<MapState<K, V>, IK, N>,
     ) {
         handle.registered = true;
-        let opts = common_options::<IK, N>();
-        self.create_column_family(&handle.id, opts)
-            .expect("Could not create column family");
     }
 
     fn register_vec_handle<'s, T: Value, IK: Metakey, N: Metakey>(
@@ -218,10 +165,6 @@ impl Backend for Tikv {
         handle: &'s mut Handle<VecState<T>, IK, N>,
     ) {
         handle.registered = true;
-        let mut opts = common_options::<IK, N>();
-        opts.set_merge_operator_associative("vec_merge", vec_ops::vec_merge);
-        self.create_column_family(&handle.id, opts)
-            .expect("Could not create column family");
     }
 
     fn register_reducer_handle<'s, T: Value, F: Reducer<T>, IK: Metakey, N: Metakey>(
@@ -229,11 +172,6 @@ impl Backend for Tikv {
         handle: &'s mut Handle<ReducerState<T, F>, IK, N>,
     ) {
         handle.registered = true;
-        let mut opts = common_options::<IK, N>();
-        let reducer_merge = reducer_ops::make_reducer_merge(handle.extra_data.clone());
-        opts.set_merge_operator_associative("reducer_merge", reducer_merge);
-        self.create_column_family(&handle.id, opts)
-            .expect("Could not create column family");
     }
 
     fn register_aggregator_handle<'s, A: Aggregator, IK: Metakey, N: Metakey>(
@@ -241,11 +179,6 @@ impl Backend for Tikv {
         handle: &'s mut Handle<AggregatorState<A>, IK, N>,
     ) {
         handle.registered = true;
-        let mut opts = common_options::<IK, N>();
-        let aggregator_merge = aggregator_ops::make_aggregator_merge(handle.extra_data.clone());
-        opts.set_merge_operator_associative("aggregator_merge", aggregator_merge);
-        self.create_column_family(&handle.id, opts)
-            .expect("Could not create column family");
     }
 }
 
