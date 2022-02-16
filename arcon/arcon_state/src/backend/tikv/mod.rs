@@ -5,7 +5,7 @@ use crate::{
     VecState,
 };
 
-use tikv_client::{RawClient, TransactionClient, Error};
+use tikv_client::{RawClient, ColumnFamily, Error};
 
 use tokio::runtime::Runtime;
 
@@ -18,8 +18,7 @@ use std::{
 
 #[derive(Debug)]
 pub struct Tikv {
-    // txn_client: TransactionClient,
-    raw_client: RawClient,
+    client: RawClient,
     restored: bool,
     name: String,
 }
@@ -41,8 +40,11 @@ impl Tikv {
         cf_name: impl AsRef<str>,
         key: impl AsRef<[u8]>,
     ) -> Result<Option<DBPinnableSlice>> {
-        let cf = self.get_cf_handle(cf_name)?;
-        Ok(self.db().get_pinned_cf(cf, key)?)
+        let cf = ColumnFamily::try_from(cf_name.as_ref()).unwrap();
+        client_with_cf = self.client.with_cf()
+
+        Ok(rt.block_on(
+            client_with_cf.get(key.as_ref().to_owned()).await?)?)
     }
 
     #[inline]
@@ -52,16 +54,20 @@ impl Tikv {
         key: impl AsRef<[u8]>,
         value: impl AsRef<[u8]>,
     ) -> Result<()> {
-        let cf = self.get_cf_handle(cf_name)?;
-        Ok(self
-            .db()
-            .put_cf_opt(cf, key, value, &default_write_opts())?)
+        let cf = ColumnFamily::try_from(cf_name.as_ref()).unwrap();
+        client_with_cf = self.client.with_cf()
+
+        Ok(rt.block_on(
+            client_with_cf.put(key.as_ref().to_owned(), value.as_ref().to_owned()).await?)?)
     }
 
     #[inline]
     fn remove(&self, cf: impl AsRef<str>, key: impl AsRef<[u8]>) -> Result<()> {
-        let cf = self.get_cf_handle(cf)?;
-        Ok(self.db().delete_cf_opt(cf, key, &default_write_opts())?)
+        let cf = ColumnFamily::try_from(cf_name.as_ref()).unwrap();
+        client_with_cf = self.client.with_cf()
+
+        Ok(rt.block_on(
+            client_with_cf.delete(key.as_ref().to_owned()).await?)?)
     }
 
     fn remove_prefix(&self, cf: impl AsRef<str>, prefix: impl AsRef<[u8]>) -> Result<()> {
@@ -89,25 +95,14 @@ impl Tikv {
 
     #[inline]
     fn contains(&self, cf: impl AsRef<str>, key: impl AsRef<[u8]>) -> Result<bool> {
-        let cf = self.get_cf_handle(cf.as_ref())?;
-        Ok(self.db().get_pinned_cf(cf, key)?.is_some())
+        let cf = ColumnFamily::try_from(cf_name.as_ref()).unwrap();
+        client_with_cf = self.client.with_cf()
+
+        Ok(rt.block_on(
+            client_with_cf.get(key.as_ref().to_owned()).await?)?.is_some())
     }
 }
 
-fn common_options<IK, N>() -> Options
-where
-    IK: Metakey,
-    N: Metakey,
-{
-    let prefix_size = IK::SIZE + N::SIZE;
-
-    let mut opts = Options::default();
-    // for map state to work properly, but useful for all the states, so the bloom filters get
-    // populated
-    opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(prefix_size as usize));
-
-    opts
-}
 
 impl Backend for Tikv {
     fn name(&self) -> &str {
