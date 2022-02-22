@@ -10,7 +10,7 @@ pub(crate) const VALUE_MARKER: u8 = 0x00;
 #[cfg(feature = "metrics")]
 use crate::metrics_utils::*;
 
-impl AggregatorOps for Rocks {
+impl AggregatorOps for Tikv {
     fn aggregator_clear<A: Aggregator, IK: Metakey, N: Metakey>(
         &self,
         handle: &Handle<AggregatorState<A>, IK, N>,

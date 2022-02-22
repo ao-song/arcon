@@ -4,14 +4,12 @@ use crate::{
     data::{Key, Metakey, Value},
     error::*,
     handles::BoxedIteratorOfResult,
-    rocks::default_write_opts,
     serialization::{fixed_bytes, protobuf},
-    Handle, MapOps, MapState, Rocks,
+    Handle, MapOps, MapState, Tikv,
 };
 
-use rocksdb::WriteBatch;
 
-impl MapOps for Rocks {
+impl MapOps for Tikv {
     fn map_clear<K: Key, V: Value, IK: Metakey, N: Metakey>(
         &self,
         handle: &Handle<MapState<K, V>, IK, N>,
