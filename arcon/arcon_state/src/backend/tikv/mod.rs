@@ -41,7 +41,7 @@ impl Tikv {
         key: impl AsRef<[u8]>,
     ) -> Result<Option<DBPinnableSlice>> {
         let cf = ColumnFamily::try_from(cf_name.as_ref()).unwrap();
-        client_with_cf = self.client.with_cf();
+        client_with_cf = self.client.with_cf(cf);
 
         Ok(rt.block_on(
             client_with_cf.get(key.as_ref().to_owned()).await?)?)
@@ -55,7 +55,7 @@ impl Tikv {
         value: impl AsRef<[u8]>,
     ) -> Result<()> {
         let cf = ColumnFamily::try_from(cf_name.as_ref()).unwrap();
-        client_with_cf = self.client.with_cf();
+        client_with_cf = self.client.with_cf(cf);
 
         Ok(rt.block_on(
             client_with_cf.put(key.as_ref().to_owned(), value.as_ref().to_owned()).await?)?)
@@ -64,7 +64,7 @@ impl Tikv {
     #[inline]
     fn remove(&self, cf: impl AsRef<str>, key: impl AsRef<[u8]>) -> Result<()> {
         let cf = ColumnFamily::try_from(cf_name.as_ref()).unwrap();
-        client_with_cf = self.client.with_cf();
+        client_with_cf = self.client.with_cf(cf);
 
         Ok(rt.block_on(
             client_with_cf.delete(key.as_ref().to_owned()).await?)?)
@@ -96,7 +96,7 @@ impl Tikv {
     #[inline]
     fn contains(&self, cf: impl AsRef<str>, key: impl AsRef<[u8]>) -> Result<bool> {
         let cf = ColumnFamily::try_from(cf_name.as_ref()).unwrap();
-        client_with_cf = self.client.with_cf();
+        client_with_cf = self.client.with_cf(cf);
 
         Ok(rt.block_on(
             client_with_cf.get(key.as_ref().to_owned()).await?)?.is_some())

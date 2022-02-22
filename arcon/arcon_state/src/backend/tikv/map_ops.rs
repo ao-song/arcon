@@ -8,6 +8,11 @@ use crate::{
     Handle, MapOps, MapState, Tikv,
 };
 
+use tikv_client::{RawClient, ColumnFamily, Error};
+
+use tokio::runtime::Runtime;
+
+let rt = Runtime::new().unwrap();
 
 impl MapOps for Tikv {
     fn map_clear<K: Key, V: Value, IK: Metakey, N: Metakey>(
@@ -49,6 +54,7 @@ impl MapOps for Tikv {
         Ok(())
     }
 
+    // Question, what is the difference here?
     fn map_fast_insert_by_ref<K: Key, V: Value, IK: Metakey, N: Metakey>(
         &self,
         handle: &Handle<MapState<K, V>, IK, N>,
@@ -93,36 +99,23 @@ impl MapOps for Tikv {
         handle: &Handle<MapState<K, V>, IK, N>,
         key_value_pairs: impl IntoIterator<Item = (K, V)>,
     ) -> Result<()> {
-        let mut wb = WriteBatch::default();
-        let cf = self.get_cf_handle(&handle.id)?;
+        let cf = ColumnFamily::try_from(handle.id.as_ref()).unwrap();
 
-        for (user_key, value) in key_value_pairs {
-            let key = handle.serialize_metakeys_and_key(&user_key)?;
-            let serialized = protobuf::serialize(&value)?;
-            #[cfg(feature = "metrics")]
-            record_bytes_written(handle.name(), serialized.len() as u64, self.name.as_str());
-            wb.put_cf(cf, key, serialized);
-        }
+        client_with_cf = self.client.with_cf(cf);
 
-        Ok(self.db().write_opt(wb, &default_write_opts())?)
+        Ok(rt.block_on(client_with_cf.batch_put(key_value_pairs).await?)?)
     }
+
     fn map_insert_all_by_ref<'a, K: Key, V: Value, IK: Metakey, N: Metakey>(
         &self,
         handle: &Handle<MapState<K, V>, IK, N>,
         key_value_pairs: impl IntoIterator<Item = (&'a K, &'a V)>,
     ) -> Result<()> {
-        let mut wb = WriteBatch::default();
-        let cf = self.get_cf_handle(&handle.id)?;
+        let cf = ColumnFamily::try_from(handle.id.as_ref()).unwrap();
 
-        for (user_key, value) in key_value_pairs {
-            let key = handle.serialize_metakeys_and_key(user_key)?;
-            let serialized = protobuf::serialize(value)?;
-            #[cfg(feature = "metrics")]
-            record_bytes_written(handle.name(), serialized.len() as u64, self.name.as_str());
-            wb.put_cf(cf, key, serialized);
-        }
+        client_with_cf = self.client.with_cf(cf);
 
-        Ok(self.db().write_opt(wb, &default_write_opts())?)
+        Ok(rt.block_on(client_with_cf.batch_put(key_value_pairs).await?)?)
     }
 
     fn map_remove<K: Key, V: Value, IK: Metakey, N: Metakey>(
@@ -168,7 +161,7 @@ impl MapOps for Tikv {
         handle: &Handle<MapState<K, V>, IK, N>,
     ) -> Result<BoxedIteratorOfResult<'_, (K, V)>> {
         let prefix = handle.serialize_metakeys()?;
-        let cf = self.get_cf_handle(&handle.id)?;
+        let cf = ColumnFamily::try_from(handle.id.as_ref()).unwrap();
         // NOTE: prefix_iterator only works as expected when the cf has proper prefix_extractor
         //   option set. We do that in Rocks::register_*_state
         let iter =
@@ -192,7 +185,7 @@ impl MapOps for Tikv {
         handle: &Handle<MapState<K, V>, IK, N>,
     ) -> Result<BoxedIteratorOfResult<'_, K>> {
         let prefix = handle.serialize_metakeys()?;
-        let cf = self.get_cf_handle(&handle.id)?;
+        let cf = ColumnFamily::try_from(handle.id.as_ref()).unwrap();
 
         let iter = self
             .db()
@@ -214,7 +207,7 @@ impl MapOps for Tikv {
         handle: &Handle<MapState<K, V>, IK, N>,
     ) -> Result<BoxedIteratorOfResult<'_, V>> {
         let prefix = handle.serialize_metakeys()?;
-        let cf = self.get_cf_handle(&handle.id)?;
+        let cf = ColumnFamily::try_from(handle.id.as_ref()).unwrap();
 
         let iter = self
             .db()
@@ -232,7 +225,7 @@ impl MapOps for Tikv {
         handle: &Handle<MapState<K, V>, IK, N>,
     ) -> Result<usize> {
         let prefix = handle.serialize_metakeys()?;
-        let cf = self.get_cf_handle(&handle.id)?;
+        let cf = ColumnFamily::try_from(handle.id.as_ref()).unwrap();
 
         let count = self.db().prefix_iterator_cf(cf, prefix).count();
 
@@ -244,7 +237,7 @@ impl MapOps for Tikv {
         handle: &Handle<MapState<K, V>, IK, N>,
     ) -> Result<bool> {
         let prefix = handle.serialize_metakeys()?;
-        let cf = self.get_cf_handle(&handle.id)?;
+        let cf = ColumnFamily::try_from(handle.id.as_ref()).unwrap();
         Ok(self.db().prefix_iterator_cf(cf, prefix).next().is_none())
     }
 }
