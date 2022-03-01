@@ -5,7 +5,7 @@ use crate::{
     VecState,
 };
 
-use tikv_client::{RawClient, ColumnFamily, Error};
+use tikv_client::{ColumnFamily, Error, RawClient};
 
 use tokio::runtime::Runtime;
 
@@ -21,17 +21,8 @@ pub struct Tikv {
     client: RawClient,
     restored: bool,
     name: String,
+    rt: Runtime,
 }
-
-// Create the tokio runtime which will be used to block on the async
-// tikv operations
-let rt = Runtime::new().unwrap();
-
-
-// What is the Handle? What info the meta key contains here?
-// How this state be used in arcon maybe a brief overview of arcon will help?
-// !!! use just raw tikv client as it support cf?
-// create with path but for tikv it should be a vector of IP addresses?
 
 impl Tikv {
     #[inline]
@@ -43,8 +34,9 @@ impl Tikv {
         let cf = ColumnFamily::try_from(cf_name.as_ref()).unwrap();
         client_with_cf = self.client.with_cf(cf);
 
-        Ok(rt.block_on(
-            client_with_cf.get(key.as_ref().to_owned()).await?)?)
+        Ok(self
+            .rt
+            .block_on(client_with_cf.get(key.as_ref().to_owned()).await?)?)
     }
 
     #[inline]
@@ -57,8 +49,11 @@ impl Tikv {
         let cf = ColumnFamily::try_from(cf_name.as_ref()).unwrap();
         client_with_cf = self.client.with_cf(cf);
 
-        Ok(rt.block_on(
-            client_with_cf.put(key.as_ref().to_owned(), value.as_ref().to_owned()).await?)?)
+        Ok(self.rt.block_on(
+            client_with_cf
+                .put(key.as_ref().to_owned(), value.as_ref().to_owned())
+                .await?,
+        )?)
     }
 
     #[inline]
@@ -66,8 +61,9 @@ impl Tikv {
         let cf = ColumnFamily::try_from(cf_name.as_ref()).unwrap();
         client_with_cf = self.client.with_cf(cf);
 
-        Ok(rt.block_on(
-            client_with_cf.delete(key.as_ref().to_owned()).await?)?)
+        Ok(self
+            .rt
+            .block_on(client_with_cf.delete(key.as_ref().to_owned()).await?)?)
     }
 
     fn remove_prefix(&self, cf: impl AsRef<str>, prefix: impl AsRef<[u8]>) -> Result<()> {
@@ -98,11 +94,12 @@ impl Tikv {
         let cf = ColumnFamily::try_from(cf_name.as_ref()).unwrap();
         client_with_cf = self.client.with_cf(cf);
 
-        Ok(rt.block_on(
-            client_with_cf.get(key.as_ref().to_owned()).await?)?.is_some())
+        Ok(self
+            .rt
+            .block_on(client_with_cf.get(key.as_ref().to_owned()).await?)?
+            .is_some())
     }
 }
-
 
 impl Backend for Tikv {
     fn name(&self) -> &str {
@@ -113,14 +110,18 @@ impl Backend for Tikv {
     where
         Self: Sized,
     {
+        // Create the tokio runtime which will be used to block on the async
+        // tikv operations
+        let rt = Runtime::new().unwrap();
+
         // For Tikv it is IP addresses here, use path string store the IP
-        let client = rt.block_on(
-            RawClient::new(vec![path.to_str().unwrap()]))?;
+        let client = rt.block_on(RawClient::new(vec![path.to_str().unwrap()]))?;
 
         Ok(Tikv {
             client,
             restored: false,
             name,
+            rt,
         })
     }
 
@@ -137,9 +138,8 @@ impl Backend for Tikv {
         self.restored
     }
 
-    fn checkpoint(&self, checkpoint_path: &Path) -> Result<()> {       
-        // This method is ignored for TiKV 
-        Ok(())
+    fn checkpoint(&self, checkpoint_path: &Path) -> Result<()> {
+        unimplemented!();
     }
 
     fn register_value_handle<'s, T: Value, IK: Metakey, N: Metakey>(
@@ -184,6 +184,7 @@ mod reducer_ops;
 mod value_ops;
 mod vec_ops;
 
+// TODO: to update for tikv
 #[cfg(test)]
 pub mod tests {
     use super::*;
@@ -195,7 +196,7 @@ pub mod tests {
 
     #[derive(Debug)]
     pub struct TestDb {
-        rocks: Arc<Rocks>,
+        tikv: Arc<Tikv>,
         dir: TempDir,
     }
 

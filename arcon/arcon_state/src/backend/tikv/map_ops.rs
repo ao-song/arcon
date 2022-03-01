@@ -8,11 +8,9 @@ use crate::{
     Handle, MapOps, MapState, Tikv,
 };
 
-use tikv_client::{RawClient, ColumnFamily, Error};
+use tikv_client::{ColumnFamily, Error, RawClient};
 
 use tokio::runtime::Runtime;
-
-let rt = Runtime::new().unwrap();
 
 impl MapOps for Tikv {
     fn map_clear<K: Key, V: Value, IK: Metakey, N: Metakey>(
@@ -54,7 +52,6 @@ impl MapOps for Tikv {
         Ok(())
     }
 
-    // Question, what is the difference here?
     fn map_fast_insert_by_ref<K: Key, V: Value, IK: Metakey, N: Metakey>(
         &self,
         handle: &Handle<MapState<K, V>, IK, N>,
@@ -78,7 +75,6 @@ impl MapOps for Tikv {
     ) -> Result<Option<V>> {
         let key = handle.serialize_metakeys_and_key(&key)?;
 
-        // couldn't find a `put` that would return the previous value from rocks
         let old = if let Some(slice) = self.get(&handle.id, &key)? {
             #[cfg(feature = "metrics")]
             record_bytes_written(handle.name(), slice.len() as u64, self.name.as_str());
@@ -103,7 +99,9 @@ impl MapOps for Tikv {
 
         client_with_cf = self.client.with_cf(cf);
 
-        Ok(rt.block_on(client_with_cf.batch_put(key_value_pairs).await?)?)
+        Ok(self
+            .rt
+            .block_on(client_with_cf.batch_put(key_value_pairs).await?)?)
     }
 
     fn map_insert_all_by_ref<'a, K: Key, V: Value, IK: Metakey, N: Metakey>(
@@ -115,7 +113,9 @@ impl MapOps for Tikv {
 
         client_with_cf = self.client.with_cf(cf);
 
-        Ok(rt.block_on(client_with_cf.batch_put(key_value_pairs).await?)?)
+        Ok(self
+            .rt
+            .block_on(client_with_cf.batch_put(key_value_pairs).await?)?)
     }
 
     fn map_remove<K: Key, V: Value, IK: Metakey, N: Metakey>(
@@ -160,84 +160,34 @@ impl MapOps for Tikv {
         &self,
         handle: &Handle<MapState<K, V>, IK, N>,
     ) -> Result<BoxedIteratorOfResult<'_, (K, V)>> {
-        let prefix = handle.serialize_metakeys()?;
-        let cf = ColumnFamily::try_from(handle.id.as_ref()).unwrap();
-        // NOTE: prefix_iterator only works as expected when the cf has proper prefix_extractor
-        //   option set. We do that in Rocks::register_*_state
-        let iter =
-            self.db()
-                .prefix_iterator_cf(cf, prefix)
-                .map(move |(db_key, serialized_value)| {
-                    let mut key_cursor = &db_key[..];
-                    let _item_key: IK = fixed_bytes::deserialize_from(&mut key_cursor)?;
-                    let _namespace: N = fixed_bytes::deserialize_from(&mut key_cursor)?;
-                    let key: K = protobuf::deserialize_from(&mut key_cursor)?;
-                    let value: V = protobuf::deserialize(&serialized_value)?;
-
-                    Ok((key, value))
-                });
-
-        Ok(Box::new(iter))
+        unimplemented!();
     }
 
     fn map_keys<K: Key, V: Value, IK: Metakey, N: Metakey>(
         &self,
         handle: &Handle<MapState<K, V>, IK, N>,
     ) -> Result<BoxedIteratorOfResult<'_, K>> {
-        let prefix = handle.serialize_metakeys()?;
-        let cf = ColumnFamily::try_from(handle.id.as_ref()).unwrap();
-
-        let iter = self
-            .db()
-            .prefix_iterator_cf(cf, prefix)
-            .map(move |(db_key, _)| {
-                let mut key_cursor = &db_key[..];
-                let _item_key: IK = fixed_bytes::deserialize_from(&mut key_cursor)?;
-                let _namespace: N = fixed_bytes::deserialize_from(&mut key_cursor)?;
-                let key = protobuf::deserialize_from(&mut key_cursor)?;
-
-                Ok(key)
-            });
-
-        Ok(Box::new(iter))
+        unimplemented!();
     }
 
     fn map_values<K: Key, V: Value, IK: Metakey, N: Metakey>(
         &self,
         handle: &Handle<MapState<K, V>, IK, N>,
     ) -> Result<BoxedIteratorOfResult<'_, V>> {
-        let prefix = handle.serialize_metakeys()?;
-        let cf = ColumnFamily::try_from(handle.id.as_ref()).unwrap();
-
-        let iter = self
-            .db()
-            .prefix_iterator_cf(cf, prefix)
-            .map(move |(_, serialized_value)| {
-                let value: V = protobuf::deserialize(&serialized_value)?;
-                Ok(value)
-            });
-
-        Ok(Box::new(iter))
+        unimplemented!();
     }
 
     fn map_len<K: Key, V: Value, IK: Metakey, N: Metakey>(
         &self,
         handle: &Handle<MapState<K, V>, IK, N>,
     ) -> Result<usize> {
-        let prefix = handle.serialize_metakeys()?;
-        let cf = ColumnFamily::try_from(handle.id.as_ref()).unwrap();
-
-        let count = self.db().prefix_iterator_cf(cf, prefix).count();
-
-        Ok(count)
+        unimplemented!();
     }
 
     fn map_is_empty<K: Key, V: Value, IK: Metakey, N: Metakey>(
         &self,
         handle: &Handle<MapState<K, V>, IK, N>,
     ) -> Result<bool> {
-        let prefix = handle.serialize_metakeys()?;
-        let cf = ColumnFamily::try_from(handle.id.as_ref()).unwrap();
-        Ok(self.db().prefix_iterator_cf(cf, prefix).next().is_none())
+        unimplemented!();
     }
 }
