@@ -1,7 +1,4 @@
-use crate::{
-    data::Metakey, error::*, serialization::protobuf, Aggregator, AggregatorOps, AggregatorState,
-    Handle, Tikv,
-};
+use crate::{data::Metakey, error::*, Aggregator, AggregatorOps, AggregatorState, Handle, Tikv};
 
 // Unimplemented module
 
@@ -35,7 +32,7 @@ impl AggregatorOps for Tikv {
     }
 }
 
-pub(crate) fn make_aggregator_merge<A>(aggregator: A) -> impl MergeFn + Clone
+pub(crate) fn make_aggregator_merge<A>(aggregator: A) -> impl Clone
 where
     A: Aggregator,
 {

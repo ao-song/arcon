@@ -254,12 +254,19 @@ pub mod sled;
 #[cfg(feature = "sled")]
 pub use self::sled::Sled;
 
+#[cfg(feature = "tikv")]
+pub mod tikv;
+#[cfg(feature = "tikv")]
+pub use self::tikv::Tikv;
+
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 pub enum BackendType {
     #[cfg(feature = "rocks")]
     Rocks,
     #[cfg(feature = "sled")]
     Sled,
+    #[cfg(feature = "tikv")]
+    Tikv,
 }
 
 impl fmt::Display for BackendType {
@@ -276,6 +283,8 @@ impl BackendType {
             Rocks,
             #[cfg(feature = "sled")]
             Sled,
+            #[cfg(feature = "tikv")]
+            Tikv,
         ]
     };
 
@@ -285,6 +294,8 @@ impl BackendType {
             "Rocks",
             #[cfg(feature = "sled")]
             "Sled",
+            #[cfg(feature = "tikv")]
+            "Tikv",
         ]
     };
 }
@@ -300,6 +311,8 @@ impl FromStr for BackendType {
             x if x.eq_ignore_ascii_case("Rocks") => Ok(Rocks),
             #[cfg(feature = "sled")]
             x if x.eq_ignore_ascii_case("Sled") => Ok(Sled),
+            #[cfg(feature = "tikv")]
+            x if x.eq_ignore_ascii_case("Tikv") => Ok(Tikv),
             _ => Err(format!(
                 "valid values: {}",
                 BackendType::VARIANTS
@@ -314,6 +327,6 @@ impl FromStr for BackendType {
 
 impl Default for BackendType {
     fn default() -> Self {
-        BackendType::Sled
+        BackendType::Tikv
     }
 }

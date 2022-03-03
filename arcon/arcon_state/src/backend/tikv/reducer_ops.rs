@@ -33,7 +33,7 @@ impl ReducerOps for Tikv {
     }
 }
 
-pub fn make_reducer_merge<T, F>(reduce_fn: F) -> impl MergeFn + Clone
+pub fn make_reducer_merge<T, F>(reduce_fn: F) -> impl Clone
 where
     F: Reducer<T>,
     T: Value,

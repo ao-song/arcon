@@ -1,16 +1,16 @@
+use std::convert::TryFrom;
+
 #[cfg(feature = "metrics")]
 use crate::metrics_utils::*;
 use crate::{
     data::{Key, Metakey, Value},
     error::*,
     handles::BoxedIteratorOfResult,
-    serialization::{fixed_bytes, protobuf},
+    serialization::protobuf,
     Handle, MapOps, MapState, Tikv,
 };
 
-use tikv_client::{ColumnFamily, Error, RawClient};
-
-use tokio::runtime::Runtime;
+use tikv_client::ColumnFamily;
 
 impl MapOps for Tikv {
     fn map_clear<K: Key, V: Value, IK: Metakey, N: Metakey>(
@@ -95,13 +95,14 @@ impl MapOps for Tikv {
         handle: &Handle<MapState<K, V>, IK, N>,
         key_value_pairs: impl IntoIterator<Item = (K, V)>,
     ) -> Result<()> {
-        let cf = ColumnFamily::try_from(handle.id.as_ref()).unwrap();
+        unimplemented!();
+        // let cf = ColumnFamily::try_from(handle.id.as_ref()).unwrap();
 
-        client_with_cf = self.client.with_cf(cf);
+        // let client_with_cf = self.client.with_cf(cf);
 
-        Ok(self
-            .rt
-            .block_on(client_with_cf.batch_put(key_value_pairs).await?)?)
+        // Ok(self
+        //     .rt
+        //     .block_on(async { client_with_cf.batch_put(key_value_pairs).await.unwrap() }))
     }
 
     fn map_insert_all_by_ref<'a, K: Key, V: Value, IK: Metakey, N: Metakey>(
@@ -109,13 +110,14 @@ impl MapOps for Tikv {
         handle: &Handle<MapState<K, V>, IK, N>,
         key_value_pairs: impl IntoIterator<Item = (&'a K, &'a V)>,
     ) -> Result<()> {
-        let cf = ColumnFamily::try_from(handle.id.as_ref()).unwrap();
+        unimplemented!();
+        // let cf = ColumnFamily::try_from(handle.id.as_ref()).unwrap();
 
-        client_with_cf = self.client.with_cf(cf);
+        // let client_with_cf = self.client.with_cf(cf);
 
-        Ok(self
-            .rt
-            .block_on(client_with_cf.batch_put(key_value_pairs).await?)?)
+        // Ok(self
+        //     .rt
+        //     .block_on(async { client_with_cf.batch_put(key_value_pairs).await.unwrap() }))
     }
 
     fn map_remove<K: Key, V: Value, IK: Metakey, N: Metakey>(

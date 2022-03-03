@@ -2,10 +2,8 @@ use crate::{
     data::{Metakey, Value},
     error::*,
     handles::BoxedIteratorOfResult,
-    serialization::{fixed_bytes, fixed_bytes::FixedBytes, protobuf},
     Handle, Tikv, VecOps, VecState,
 };
-use std::{iter, mem};
 
 // Unimplemented module
 
@@ -71,12 +69,4 @@ impl VecOps for Tikv {
     ) -> Result<bool> {
         unimplemented!();
     }
-}
-
-pub(crate) fn vec_merge(
-    _key: &[u8],
-    first: Option<&[u8]>,
-    rest: &mut MergeOperands,
-) -> Option<Vec<u8>> {
-    unimplemented!();
 }

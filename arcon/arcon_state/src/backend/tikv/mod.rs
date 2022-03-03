@@ -5,18 +5,15 @@ use crate::{
     VecState,
 };
 
-use tikv_client::{ColumnFamily, Error, RawClient};
+use tikv_client::{ColumnFamily, RawClient};
 
 use tokio::runtime::Runtime;
 
 use std::{
-    cell::UnsafeCell,
-    collections::HashSet,
-    fs,
+    convert::TryFrom,
     path::{Path, PathBuf},
 };
 
-#[derive(Debug)]
 pub struct Tikv {
     client: RawClient,
     restored: bool,
@@ -30,13 +27,13 @@ impl Tikv {
         &self,
         cf_name: impl AsRef<str>,
         key: impl AsRef<[u8]>,
-    ) -> Result<Option<DBPinnableSlice>> {
+    ) -> Result<Option<tikv_client::Value>> {
         let cf = ColumnFamily::try_from(cf_name.as_ref()).unwrap();
-        client_with_cf = self.client.with_cf(cf);
+        let client_with_cf = self.client.with_cf(cf);
 
         Ok(self
             .rt
-            .block_on(client_with_cf.get(key.as_ref().to_owned()).await?)?)
+            .block_on(async { client_with_cf.get(key.as_ref().to_owned()).await.unwrap() }))
     }
 
     #[inline]
@@ -47,56 +44,41 @@ impl Tikv {
         value: impl AsRef<[u8]>,
     ) -> Result<()> {
         let cf = ColumnFamily::try_from(cf_name.as_ref()).unwrap();
-        client_with_cf = self.client.with_cf(cf);
+        let client_with_cf = self.client.with_cf(cf);
 
-        Ok(self.rt.block_on(
+        Ok(self.rt.block_on(async {
             client_with_cf
                 .put(key.as_ref().to_owned(), value.as_ref().to_owned())
-                .await?,
-        )?)
+                .await
+                .unwrap()
+        }))
     }
 
     #[inline]
     fn remove(&self, cf: impl AsRef<str>, key: impl AsRef<[u8]>) -> Result<()> {
-        let cf = ColumnFamily::try_from(cf_name.as_ref()).unwrap();
-        client_with_cf = self.client.with_cf(cf);
+        let cf = ColumnFamily::try_from(cf.as_ref()).unwrap();
+        let client_with_cf = self.client.with_cf(cf);
 
-        Ok(self
-            .rt
-            .block_on(client_with_cf.delete(key.as_ref().to_owned()).await?)?)
+        Ok(self.rt.block_on(async {
+            client_with_cf
+                .delete(key.as_ref().to_owned())
+                .await
+                .unwrap()
+        }))
     }
 
     fn remove_prefix(&self, cf: impl AsRef<str>, prefix: impl AsRef<[u8]>) -> Result<()> {
-        let prefix = prefix.as_ref();
-        let cf_name = cf.as_ref();
-
-        let cf = self.get_cf_handle(cf_name)?;
-
-        // NOTE: this only works assuming the column family is lexicographically ordered (which is
-        // the default, so we don't explicitly set it, see Options::set_comparator)
-        let start = prefix;
-        // delete_range deletes all the entries in [start, end) range, so we can just increment the
-        // least significant byte of the prefix
-        let mut end = start.to_vec();
-        *end.last_mut()
-            .expect("unreachable, the empty case is covered a few lines above") += 1;
-
-        let mut wb = WriteBatch::default();
-        wb.delete_range_cf(cf, start, &end);
-
-        self.db().write_opt(wb, &default_write_opts())?;
-
-        Ok(())
+        unimplemented!();
     }
 
     #[inline]
     fn contains(&self, cf: impl AsRef<str>, key: impl AsRef<[u8]>) -> Result<bool> {
-        let cf = ColumnFamily::try_from(cf_name.as_ref()).unwrap();
-        client_with_cf = self.client.with_cf(cf);
+        let cf = ColumnFamily::try_from(cf.as_ref()).unwrap();
+        let client_with_cf = self.client.with_cf(cf);
 
         Ok(self
             .rt
-            .block_on(client_with_cf.get(key.as_ref().to_owned()).await?)?
+            .block_on(async { client_with_cf.get(key.as_ref().to_owned()).await.unwrap() })
             .is_some())
     }
 }
@@ -115,7 +97,9 @@ impl Backend for Tikv {
         let rt = Runtime::new().unwrap();
 
         // For Tikv it is IP addresses here, use path string store the IP
-        let client = rt.block_on(RawClient::new(vec![path.to_str().unwrap()]))?;
+        let client = rt
+            .block_on(RawClient::new(vec![path.to_str().unwrap()]))
+            .unwrap();
 
         Ok(Tikv {
             client,
@@ -129,8 +113,7 @@ impl Backend for Tikv {
     where
         Self: Sized,
     {
-        // This method is ignored for TiKV
-        Ok(self.create(live_path, name))
+        unimplemented!();
     }
 
     fn was_restored(&self) -> bool {
@@ -184,17 +167,16 @@ mod reducer_ops;
 mod value_ops;
 mod vec_ops;
 
-// TODO: to update for tikv
 #[cfg(test)]
 pub mod tests {
     use super::*;
     use std::{
+        fs,
         ops::{Deref, DerefMut},
         sync::Arc,
     };
     use tempfile::TempDir;
 
-    #[derive(Debug)]
     pub struct TestDb {
         tikv: Arc<Tikv>,
         dir: TempDir,
@@ -205,51 +187,40 @@ pub mod tests {
         pub fn new() -> TestDb {
             let dir = TempDir::new().unwrap();
             let mut dir_path = dir.path().to_path_buf();
-            dir_path.push("rocks");
+            dir_path.push("127.0.0.1:2379");
             fs::create_dir(&dir_path).unwrap();
-            let rocks = Rocks::create(&dir_path, "testDB".to_string()).unwrap();
+            let tikv = Tikv::create(&dir_path, "testDB".to_string()).unwrap();
             TestDb {
-                rocks: Arc::new(rocks),
+                tikv: Arc::new(tikv),
                 dir,
             }
         }
 
         pub fn checkpoint(&mut self) -> PathBuf {
-            let mut checkpoint_dir: PathBuf = self.dir.path().into();
-            checkpoint_dir.push("checkpoint");
-            self.rocks.checkpoint(&checkpoint_dir).unwrap();
-            checkpoint_dir
+            unimplemented!();
         }
 
         pub fn from_checkpoint(checkpoint_dir: &str) -> TestDb {
-            let dir = TempDir::new().unwrap();
-            let mut dir_path = dir.path().to_path_buf();
-            dir_path.push("rocks");
-            let rocks =
-                Rocks::restore(&dir_path, checkpoint_dir.as_ref(), "testDB".to_string()).unwrap();
-            TestDb {
-                rocks: Arc::new(rocks),
-                dir,
-            }
+            unimplemented!();
         }
     }
 
     impl Deref for TestDb {
-        type Target = Arc<Rocks>;
+        type Target = Arc<Tikv>;
 
         fn deref(&self) -> &Self::Target {
-            &self.rocks
+            &self.tikv
         }
     }
 
     impl DerefMut for TestDb {
         fn deref_mut(&mut self) -> &mut Self::Target {
-            &mut self.rocks
+            &mut self.tikv
         }
     }
 
     #[test]
-    fn simple_rocksdb_test() {
+    fn simple_tikv_test() {
         let db = TestDb::new();
 
         let key = "key";
@@ -271,88 +242,12 @@ pub mod tests {
 
     #[test]
     fn checkpoint_rocksdb_raw_test() {
-        let tmp_dir = TempDir::new().unwrap();
-        let checkpoints_dir = TempDir::new().unwrap();
-        let restore_dir = TempDir::new().unwrap();
-
-        let dir_path = tmp_dir.path();
-
-        let mut checkpoints_dir_path = checkpoints_dir.path().to_path_buf();
-        checkpoints_dir_path.push("chkp0");
-
-        let mut restore_dir_path = restore_dir.path().to_path_buf();
-        restore_dir_path.push("chkp0");
-
-        let db = Rocks::create(dir_path, "testDB".to_string()).unwrap();
-
-        let key: &[u8] = b"key";
-        let initial_value: &[u8] = b"value";
-        let new_value: &[u8] = b"new value";
-        let column_family = "default";
-
-        db.put(column_family, key, initial_value)
-            .expect("put failed");
-        db.checkpoint(&checkpoints_dir_path)
-            .expect("checkpoint failed");
-        db.put(column_family, key, new_value)
-            .expect("second put failed");
-
-        let db_from_checkpoint = Rocks::restore(
-            &restore_dir_path,
-            &checkpoints_dir_path,
-            "testDB".to_string(),
-        )
-        .expect("Could not open checkpointed db");
-
-        assert_eq!(
-            new_value,
-            db.get(column_family, key)
-                .expect("Could not get from the original db")
-                .unwrap()
-                .as_ref()
-        );
-        assert_eq!(
-            initial_value,
-            db_from_checkpoint
-                .get(column_family, key)
-                .expect("Could not get from the checkpoint")
-                .unwrap()
-                .as_ref()
-        );
+        unimplemented!();
     }
 
     #[test]
     fn checkpoint_restore_state_test() {
-        let mut original_test = TestDb::new();
-        let mut a_handle = Handle::value("a");
-        original_test.register_value_handle(&mut a_handle);
-
-        let checkpoint_dir = {
-            let mut a = a_handle.activate(original_test.clone());
-
-            a.set(420).unwrap();
-
-            let checkpoint_dir = original_test.checkpoint();
-            assert_eq!(a.get().unwrap().unwrap(), 420);
-            a.set(69).unwrap();
-            assert_eq!(a.get().unwrap().unwrap(), 69);
-            checkpoint_dir
-        };
-
-        let restored = TestDb::from_checkpoint(&checkpoint_dir.to_string_lossy());
-
-        {
-            let mut a_handle = Handle::value("a");
-            restored.register_value_handle(&mut a_handle);
-            let mut a_restored = a_handle.activate(restored.clone());
-            // TODO: serialize value state metadata (type names, serialization, etc.) into rocksdb, so
-            //   that type mismatches are caught early. Right now it would be possible to, let's say,
-            //   store an integer, and then read a float from the restored state backend
-            assert_eq!(a_restored.get().unwrap().unwrap(), 420);
-
-            a_restored.set(1337).unwrap();
-            assert_eq!(a_restored.get().unwrap().unwrap(), 1337);
-        }
+        unimplemented!();
     }
 
     common_state_tests!(TestDb::new());
