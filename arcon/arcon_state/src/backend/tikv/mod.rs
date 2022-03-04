@@ -97,6 +97,8 @@ impl Backend for Tikv {
         let rt = Runtime::new().unwrap();
 
         // For Tikv it is IP addresses here, use path string store the IP
+        print!("aaaaaaaaaaaaaaaaaaaaaaa");
+        print!("{}", path.to_str().unwrap());
         let client = rt
             .block_on(RawClient::new(vec![path.to_str().unwrap()]))
             .unwrap();
@@ -171,37 +173,22 @@ mod vec_ops;
 pub mod tests {
     use super::*;
     use std::{
-        fs,
         ops::{Deref, DerefMut},
         sync::Arc,
     };
-    use tempfile::TempDir;
 
     pub struct TestDb {
         tikv: Arc<Tikv>,
-        dir: TempDir,
     }
 
     impl TestDb {
         #[allow(clippy::new_without_default)]
         pub fn new() -> TestDb {
-            let dir = TempDir::new().unwrap();
-            let mut dir_path = dir.path().to_path_buf();
-            dir_path.push("127.0.0.1:2379");
-            fs::create_dir(&dir_path).unwrap();
+            let dir_path = Path::new("127.0.0.1:2379");
             let tikv = Tikv::create(&dir_path, "testDB".to_string()).unwrap();
             TestDb {
                 tikv: Arc::new(tikv),
-                dir,
             }
-        }
-
-        pub fn checkpoint(&mut self) -> PathBuf {
-            unimplemented!();
-        }
-
-        pub fn from_checkpoint(checkpoint_dir: &str) -> TestDb {
-            unimplemented!();
         }
     }
 
@@ -238,16 +225,6 @@ pub mod tests {
         db.remove(column_family, key.as_bytes()).expect("remove");
         let v = db.get(column_family, key.as_bytes()).unwrap();
         assert!(v.is_none());
-    }
-
-    #[test]
-    fn checkpoint_rocksdb_raw_test() {
-        unimplemented!();
-    }
-
-    #[test]
-    fn checkpoint_restore_state_test() {
-        unimplemented!();
     }
 
     common_state_tests!(TestDb::new());

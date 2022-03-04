@@ -142,6 +142,8 @@ macro_rules! common_state_tests {
                 assert_eq!(should_be_zero, 0);
             }
 
+            /*
+
             #[test]
             fn map_state_test() {
                 let db = $construct_backend;
@@ -270,6 +272,7 @@ macro_rules! common_state_tests {
 
                 assert_eq!(aggregator.get().unwrap(), "[1, 2, 3]".to_string());
             }
+            */
         }
     };
 }
