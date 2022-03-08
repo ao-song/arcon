@@ -28,12 +28,12 @@ impl Tikv {
         cf_name: impl AsRef<str>,
         key: impl AsRef<[u8]>,
     ) -> Result<Option<tikv_client::Value>> {
-        let cf = ColumnFamily::try_from(cf_name.as_ref()).unwrap();
-        let client_with_cf = self.client.with_cf(cf);
+        // let cf = ColumnFamily::try_from(cf_name.as_ref()).unwrap();
+        // let client_with_cf = self.client.with_cf(cf);
 
         Ok(self
             .rt
-            .block_on(async { client_with_cf.get(key.as_ref().to_owned()).await.unwrap() }))
+            .block_on(async { self.client.get(key.as_ref().to_owned()).await.unwrap() }))
     }
 
     #[inline]
@@ -43,11 +43,11 @@ impl Tikv {
         key: impl AsRef<[u8]>,
         value: impl AsRef<[u8]>,
     ) -> Result<()> {
-        let cf = ColumnFamily::try_from(cf_name.as_ref()).unwrap();
-        let client_with_cf = self.client.with_cf(cf);
+        // let cf = ColumnFamily::try_from(cf_name.as_ref()).unwrap();
+        // let client_with_cf = self.client.with_cf(cf);
 
         Ok(self.rt.block_on(async {
-            client_with_cf
+            self.client
                 .put(key.as_ref().to_owned(), value.as_ref().to_owned())
                 .await
                 .unwrap()
@@ -56,15 +56,12 @@ impl Tikv {
 
     #[inline]
     fn remove(&self, cf: impl AsRef<str>, key: impl AsRef<[u8]>) -> Result<()> {
-        let cf = ColumnFamily::try_from(cf.as_ref()).unwrap();
-        let client_with_cf = self.client.with_cf(cf);
+        // let cf = ColumnFamily::try_from(cf.as_ref()).unwrap();
+        // let client_with_cf = self.client.with_cf(cf);
 
-        Ok(self.rt.block_on(async {
-            client_with_cf
-                .delete(key.as_ref().to_owned())
-                .await
-                .unwrap()
-        }))
+        Ok(self
+            .rt
+            .block_on(async { self.client.delete(key.as_ref().to_owned()).await.unwrap() }))
     }
 
     fn remove_prefix(&self, cf: impl AsRef<str>, prefix: impl AsRef<[u8]>) -> Result<()> {
@@ -73,12 +70,12 @@ impl Tikv {
 
     #[inline]
     fn contains(&self, cf: impl AsRef<str>, key: impl AsRef<[u8]>) -> Result<bool> {
-        let cf = ColumnFamily::try_from(cf.as_ref()).unwrap();
-        let client_with_cf = self.client.with_cf(cf);
+        // let cf = ColumnFamily::try_from(cf.as_ref()).unwrap();
+        // let client_with_cf = self.client.with_cf(cf);
 
         Ok(self
             .rt
-            .block_on(async { client_with_cf.get(key.as_ref().to_owned()).await.unwrap() })
+            .block_on(async { self.client.get(key.as_ref().to_owned()).await.unwrap() })
             .is_some())
     }
 }

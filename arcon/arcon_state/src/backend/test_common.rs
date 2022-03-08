@@ -43,7 +43,7 @@ pub struct InMemoryTestStruct<F: Reducer<u32>> {
 pub fn bundle() -> InMemoryTestStruct<impl Reducer<u32>> {
     InMemoryTestStruct {
         value: Handle::value("value").with_item_key(0).with_namespace(0),
-        value2: Handle::value("value2").with_item_key(0).with_namespace(0),
+        value2: Handle::value("value2").with_item_key(2).with_namespace(2),
         map: Handle::map("map").with_item_key(0).with_namespace(0),
         vec: Handle::vec("vec").with_item_key(0).with_namespace(0),
         reducer: Handle::reducer("reducer", |a: &u32, b: &u32| *a.max(b))
