@@ -1,5 +1,3 @@
-use std::convert::TryFrom;
-
 #[cfg(feature = "metrics")]
 use crate::metrics_utils::*;
 use crate::{
@@ -9,8 +7,6 @@ use crate::{
     serialization::protobuf,
     Handle, MapOps, MapState, Tikv,
 };
-
-use tikv_client::ColumnFamily;
 
 impl MapOps for Tikv {
     fn map_clear<K: Key, V: Value, IK: Metakey, N: Metakey>(
