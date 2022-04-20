@@ -94,7 +94,6 @@ impl Backend for Tikv {
         let rt = Runtime::new().unwrap();
 
         // For Tikv it is IP addresses here, use path string store the IP
-        print!("aaaaaaaaaaaaaaaaaaaaaaa");
         print!("{}", path.to_str().unwrap());
         let client = rt
             .block_on(RawClient::new(vec![path.to_str().unwrap()]))
