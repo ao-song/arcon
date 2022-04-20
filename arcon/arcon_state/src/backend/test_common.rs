@@ -107,6 +107,7 @@ macro_rules! common_state_tests {
                 let v2v = value2.get().unwrap().unwrap();
                 assert!(v1opt.is_none());
                 assert_eq!(v2v, 456);
+                value2.clear().unwrap();
             }
 
             #[test]
@@ -142,8 +143,7 @@ macro_rules! common_state_tests {
                 assert_eq!(should_be_zero, 0);
             }
 
-            /*
-
+/*
             #[test]
             fn map_state_test() {
                 let db = $construct_backend;
@@ -218,6 +218,7 @@ macro_rules! common_state_tests {
                     map.iter().unwrap().map(Result::unwrap).collect();
                 assert_eq!(tuples_from_key_one_after_clear_zero, expected_for_key_one);
             }
+
 
             #[test]
             fn vec_state_test() {
