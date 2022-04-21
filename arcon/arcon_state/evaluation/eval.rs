@@ -1,19 +1,18 @@
 extern crate arcon_state;
 
 use arcon_state::*;
+use std::io::Write;
+use std::ops::Deref;
 use std::{
     env,
     error::Error,
     iter,
+    path::PathBuf,
     sync::atomic::{AtomicBool, Ordering},
     thread,
     time::Duration,
-    path::PathBuf,
 };
 use tempfile::tempdir_in;
-use std::io::Write;
-use std::ops::Deref;
-
 
 fn make_key(i: usize, key_size: usize) -> Vec<u8> {
     i.to_le_bytes()
@@ -26,6 +25,33 @@ fn make_key(i: usize, key_size: usize) -> Vec<u8> {
 
 fn make_value(value_size: usize, rng: &fastrand::Rng) -> Vec<u8> {
     iter::repeat_with(|| rng.u8(..)).take(value_size).collect()
+}
+
+fn measure<B: Backend>(
+    mut out: Box<dyn Write>,
+    mut f: impl FnMut() -> Result<(), Box<dyn Error>>,
+) -> Result<(), Box<dyn Error>> {
+    println!("Measurement started... ");
+    let num_ops = 1_000_000;
+
+    let start = std::time::Instant::now();
+
+    let mut ops_done = 0usize;
+    for i in 0..num_ops {
+        f()?;
+        ops_done += 1;
+    }
+
+    let elapsed = start.elapsed();
+    println!("Done! {:?}", elapsed);
+    writeln!(
+        out,
+        "{},{}",
+        elapsed.as_nanos() / (ops_done as u128),
+        ops_done
+    )?;
+
+    Ok(())
 }
 
 fn main() {
@@ -42,12 +68,20 @@ fn main() {
     let rng = fastrand::Rng::new();
     rng.seed(6);
 
+    let mut out = Box::new(std::io::stdout());
+
     // generate data in db
     {
         for i in 0..entry_num {
-            let key = make_key(i: usize, key_size: usize);
-            let value = make_value(value_size: usize, &rng: &fastrand::Rng);
+            let key = make_key(i, key_size);
+            let value = make_value(value_size, &rng);
             map.fast_insert(key, value)?;
         }
     }
+
+    measure(out, || {
+        let key: Vec<_> = make_key(rng.usize(0..entry_num), key_size);
+        map.get(&key)?;
+        Ok(())
+    })?
 }
