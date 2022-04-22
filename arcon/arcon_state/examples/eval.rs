@@ -1,18 +1,15 @@
 extern crate arcon_state;
+extern crate fastrand;
 
 use arcon_state::*;
 use std::io::Write;
-use std::ops::Deref;
 use std::{
-    env,
     error::Error,
     iter,
-    path::PathBuf,
-    sync::atomic::{AtomicBool, Ordering},
-    thread,
-    time::Duration,
+    path::{Path},
+    sync::Arc,
+    ops::{Deref, DerefMut},
 };
-use tempfile::tempdir_in;
 
 fn make_key(i: usize, key_size: usize) -> Vec<u8> {
     i.to_le_bytes()
@@ -27,7 +24,7 @@ fn make_value(value_size: usize, rng: &fastrand::Rng) -> Vec<u8> {
     iter::repeat_with(|| rng.u8(..)).take(value_size).collect()
 }
 
-fn measure<B: Backend>(
+fn measure(
     mut out: Box<dyn Write>,
     mut f: impl FnMut() -> Result<(), Box<dyn Error>>,
 ) -> Result<(), Box<dyn Error>> {
@@ -55,9 +52,37 @@ fn measure<B: Backend>(
 }
 
 fn main() {
-    let tikv_path = Path::new("127.0.0.1:2379");
-    let tikv = Arc::new(Tikv::create(&tikv_path, "testDB".to_string()).unwrap());
-    let eval_map = Handle::map("map").with_item_key(0).with_namespace(0);
+    pub struct TestDb {
+        tikv: Arc<Tikv>,
+    }
+
+    impl TestDb {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> TestDb {
+            let dir_path = Path::new("127.0.0.1:2379");
+            let tikv = Tikv::create(&dir_path, "testDB".to_string()).unwrap();
+            TestDb {
+                tikv: Arc::new(tikv),
+            }
+        }
+    }
+
+    impl Deref for TestDb {
+        type Target = Arc<Tikv>;
+
+        fn deref(&self) -> &Self::Target {
+            &self.tikv
+        }
+    }
+
+    impl DerefMut for TestDb {
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            &mut self.tikv
+        }
+    }
+
+    let tikv = TestDb::new();
+    let mut eval_map = Handle::map("map").with_item_key(0).with_namespace(0);
     tikv.register_map_handle(&mut eval_map);
     let map = eval_map.activate(tikv.clone());
 
@@ -68,20 +93,20 @@ fn main() {
     let rng = fastrand::Rng::new();
     rng.seed(6);
 
-    let mut out = Box::new(std::io::stdout());
+    let out = Box::new(std::io::stdout());
 
     // generate data in db
     {
         for i in 0..entry_num {
             let key = make_key(i, key_size);
             let value = make_value(value_size, &rng);
-            map.fast_insert(key, value)?;
+            let _ret = map.fast_insert(key, value);
         }
     }
 
-    measure(out, || {
+    let _ret = measure(out, || {
         let key: Vec<_> = make_key(rng.usize(0..entry_num), key_size);
         map.get(&key)?;
         Ok(())
-    })?
+    });
 }
