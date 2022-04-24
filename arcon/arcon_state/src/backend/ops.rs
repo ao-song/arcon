@@ -35,6 +35,32 @@ pub trait ValueOps {
     ) -> Result<()>;
 }
 
+pub trait CacheOps {
+    fn hashmap_get<K: Key, V: Value, IK: Metakey, N: Metakey>(
+        &self,
+        handle: &Handle<MapState<K, V>, IK, N>,
+        key: &K,
+    ) -> Result<Option<V>>;
+
+    fn lru_get<K: Key, V: Value, IK: Metakey, N: Metakey>(
+        &self,
+        handle: &Handle<MapState<K, V>, IK, N>,
+        key: &K,
+    ) -> Result<Option<V>>;
+
+    fn tiny_lfu_get<K: Key, V: Value, IK: Metakey, N: Metakey>(
+        &self,
+        handle: &Handle<MapState<K, V>, IK, N>,
+        key: &K,
+    ) -> Result<Option<V>>;
+
+    fn hybrid_get<K: Key, V: Value, IK: Metakey, N: Metakey>(
+        &self,
+        handle: &Handle<MapState<K, V>, IK, N>,
+        key: &K,
+    ) -> Result<Option<V>>;
+}
+
 pub trait MapOps {
     fn map_clear<K: Key, V: Value, IK: Metakey, N: Metakey>(
         &self,
