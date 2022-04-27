@@ -14,11 +14,20 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use std::collections::HashMap;
+
+#[derive(Debug)]
+pub struct CacheBundle {
+    size: u32,
+    hash: HashMap<Vec<u8>, Vec<u8>>,
+}
+
 pub struct Tikv {
     client: RawClient,
     restored: bool,
     name: String,
     rt: Runtime,
+    cache: CacheBundle,
 }
 
 impl Tikv {
@@ -99,11 +108,17 @@ impl Backend for Tikv {
             .block_on(RawClient::new(vec![path.to_str().unwrap()]))
             .unwrap();
 
+        let cb = CacheBundle {
+            hash: HashMap::new(),
+            size: 10_000,
+        };
+
         Ok(Tikv {
             client,
             restored: false,
             name,
             rt,
+            cache: cb,
         })
     }
 
