@@ -6,6 +6,7 @@ use crate::{
     handles::BoxedIteratorOfResult,
     serialization::protobuf,
     Handle, MapOps, MapState, Tikv,
+    CacheOps,
 };
 
 use std::collections::HashMap;

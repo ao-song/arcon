@@ -42,6 +42,13 @@ pub trait CacheOps {
         key: &K,
     ) -> Result<Option<V>>;
 
+    fn hashmap_fast_insert<K: Key, V: Value, IK: Metakey, N: Metakey>(
+        &self,
+        handle: &Handle<MapState<K, V>, IK, N>,
+        key: K,
+        value: V,
+    ) -> Result<()>;
+
     fn lru_get<K: Key, V: Value, IK: Metakey, N: Metakey>(
         &self,
         handle: &Handle<MapState<K, V>, IK, N>,

@@ -10,7 +10,7 @@ pub mod test_common;
 
 pub use crate::{
     handles::Handle,
-    ops::{AggregatorOps, MapOps, ReducerOps, ValueOps, VecOps},
+    ops::{AggregatorOps, MapOps, ReducerOps, ValueOps, VecOps, CacheOps},
 };
 
 use crate::{
@@ -35,7 +35,7 @@ pub struct Config {
 }
 
 pub trait Backend:
-    ValueOps + MapOps + VecOps + ReducerOps + AggregatorOps + Send + Sync + 'static
+    ValueOps + MapOps + CacheOps + VecOps + ReducerOps + AggregatorOps + Send + Sync + 'static
 {
     fn restore_or_create(config: &Config, id: String) -> Result<Self>
     where
