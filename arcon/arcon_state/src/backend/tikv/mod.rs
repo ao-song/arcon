@@ -10,8 +10,10 @@ use tikv_client::{ColumnFamily, RawClient};
 use tokio::runtime::Runtime;
 
 use std::{
+    cell::RefCell,
     convert::TryFrom,
     path::{Path, PathBuf},
+    rc::Rc,
 };
 
 use std::collections::HashMap;
@@ -19,7 +21,7 @@ use std::collections::HashMap;
 #[derive(Debug)]
 pub struct CacheBundle {
     size: u32,
-    hash: HashMap<Vec<u8>, Vec<u8>>,
+    hash: RefCell<HashMap<Vec<u8>, Vec<u8>>>,
 }
 
 pub struct Tikv {
@@ -109,7 +111,7 @@ impl Backend for Tikv {
             .unwrap();
 
         let cb = CacheBundle {
-            hash: HashMap::new(),
+            hash: RefCell::new(HashMap::new()),
             size: 10_000,
         };
 
@@ -175,6 +177,7 @@ impl Backend for Tikv {
 }
 
 mod aggregator_ops;
+pub mod cache_ops;
 mod map_ops;
 mod reducer_ops;
 mod value_ops;

@@ -10,7 +10,7 @@ pub mod test_common;
 
 pub use crate::{
     handles::Handle,
-    ops::{AggregatorOps, MapOps, ReducerOps, ValueOps, VecOps, CacheOps},
+    ops::{AggregatorOps, CacheOps, MapOps, ReducerOps, ValueOps, VecOps},
 };
 
 use crate::{
@@ -35,7 +35,7 @@ pub struct Config {
 }
 
 pub trait Backend:
-    ValueOps + MapOps + CacheOps + VecOps + ReducerOps + AggregatorOps + Send + Sync + 'static
+    ValueOps + MapOps + CacheOps + VecOps + ReducerOps + AggregatorOps + 'static
 {
     fn restore_or_create(config: &Config, id: String) -> Result<Self>
     where
@@ -187,6 +187,17 @@ impl<K: Key, V: Value> StateType for MapState<K, V> {
 impl<K: Key, V: Value> Default for MapState<K, V> {
     fn default() -> Self {
         MapState(Default::default())
+    }
+}
+
+#[derive(Debug)]
+pub struct CacheState<K: Key, V: Value>(PhantomData<(K, V)>);
+impl<K: Key, V: Value> StateType for CacheState<K, V> {
+    type ExtraData = ();
+}
+impl<K: Key, V: Value> Default for CacheState<K, V> {
+    fn default() -> Self {
+        CacheState(Default::default())
     }
 }
 

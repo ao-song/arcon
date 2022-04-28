@@ -6,9 +6,9 @@ use std::io::Write;
 use std::{
     error::Error,
     iter,
-    path::{Path},
-    sync::Arc,
     ops::{Deref, DerefMut},
+    path::Path,
+    sync::Arc,
 };
 
 fn make_key(i: usize, key_size: usize) -> Vec<u8> {
@@ -104,9 +104,22 @@ fn main() {
         }
     }
 
+    println!("Now measure random read on tikv...");
     let _ret = measure(out, || {
         let key: Vec<_> = make_key(rng.usize(0..entry_num), key_size);
         map.get(&key)?;
         Ok(())
     });
+
+    println!("Now measure random read on hashmap...");
+    let out = Box::new(std::io::stdout());
+    let newhandle: Handle<MapState<Vec<u8>, Vec<u8>>, i32, i32> =
+        Handle::map("hashmap").with_item_key(1).with_namespace(1);
+    let _ret = measure(out, || {
+        let key: Vec<_> = make_key(rng.usize(0..entry_num), key_size);
+        map.backend.hashmap_get(&newhandle, &key);
+        Ok(())
+    });
+
+    // cargo run --example eval
 }
