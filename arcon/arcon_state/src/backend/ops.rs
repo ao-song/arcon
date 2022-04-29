@@ -40,7 +40,7 @@ pub trait CacheOps {
         &self,
         handle: &Handle<MapState<K, V>, IK, N>,
         key: &K,
-    ) -> Result<Option<V>>;
+    ) -> Result<Option<(V, bool)>>;
 
     fn hashmap_fast_insert<K: Key, V: Value, IK: Metakey, N: Metakey>(
         &self,

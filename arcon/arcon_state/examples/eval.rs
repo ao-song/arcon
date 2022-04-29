@@ -26,7 +26,7 @@ fn make_value(value_size: usize, rng: &fastrand::Rng) -> Vec<u8> {
 
 fn measure(
     mut out: Box<dyn Write>,
-    mut f: impl FnMut() -> Result<(), Box<dyn Error>>,
+    mut f: impl FnMut() -> Result<bool, Box<dyn Error>>,
 ) -> Result<(), Box<dyn Error>> {
     println!("Measurement started... ");
     let num_ops = 1_000_000;
@@ -34,13 +34,18 @@ fn measure(
     let start = std::time::Instant::now();
 
     let mut ops_done = 0usize;
+    let mut hit = 0usize;
     for i in 0..num_ops {
-        f()?;
+        let h = f()?;
         ops_done += 1;
+        if h {
+            hit += 1;
+        }
     }
 
     let elapsed = start.elapsed();
     println!("Done! {:?}", elapsed);
+    println!("Hit rate! {:?}", hit as f64 / ops_done as f64);
     writeln!(
         out,
         "{},{}",
@@ -82,7 +87,7 @@ fn main() {
     }
 
     let tikv = TestDb::new();
-    let mut eval_map = Handle::map("map").with_item_key(0).with_namespace(0);
+    let mut eval_map: Handle<MapState<Vec<u8>, Vec<u8>>, i32, i32> = Handle::map("map").with_item_key(0).with_namespace(0);
     tikv.register_map_handle(&mut eval_map);
     let map = eval_map.activate(tikv.clone());
 
@@ -104,12 +109,12 @@ fn main() {
         }
     }
 
-    println!("Now measure random read on tikv...");
-    let _ret = measure(out, || {
-        let key: Vec<_> = make_key(rng.usize(0..entry_num), key_size);
-        map.get(&key)?;
-        Ok(())
-    });
+    // println!("Now measure random read on tikv...");
+    // let _ret = measure(out, || {
+    //     let key: Vec<_> = make_key(rng.usize(0..entry_num), key_size);
+    //     map.get(&key)?;
+    //     Ok(true)
+    // });
 
     println!("Now measure random read on hashmap...");
     let out = Box::new(std::io::stdout());
@@ -117,8 +122,13 @@ fn main() {
         Handle::map("hashmap").with_item_key(1).with_namespace(1);
     let _ret = measure(out, || {
         let key: Vec<_> = make_key(rng.usize(0..entry_num), key_size);
-        map.backend.hashmap_get(&newhandle, &key);
-        Ok(())
+        let ret = map.backend.hashmap_get(&newhandle, &key)?;
+        if let Some((_, hit)) = ret {
+            Ok(hit)
+        } else {
+            println!("nothing got!");
+            Err("nothing got!".into())
+        }
     });
 
     // cargo run --example eval

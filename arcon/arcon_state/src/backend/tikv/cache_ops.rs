@@ -15,7 +15,7 @@ impl CacheOps for Tikv {
         &self,
         handle: &Handle<MapState<K, V>, IK, N>,
         key: &K,
-    ) -> Result<Option<V>> {
+    ) -> Result<Option<(V, bool)>> {
         let key = handle.serialize_metakeys_and_key(key)?;
         let mut map = self.cache.hash.borrow_mut();
         let cache_size = self.cache.size;
@@ -24,7 +24,7 @@ impl CacheOps for Tikv {
             #[cfg(feature = "metrics")]
             record_bytes_read(handle.name(), serialized.len() as u64, self.name.as_str());
             let value = protobuf::deserialize(&serialized)?;
-            Ok(Some(value))
+            Ok(Some((value, true)))
         } else if let Some(serialized) = self.get(&handle.id, &key)? {
             #[cfg(feature = "metrics")]
             record_bytes_read(handle.name(), serialized.len() as u64, self.name.as_str());
@@ -36,7 +36,7 @@ impl CacheOps for Tikv {
                 map.clear();
             }
             map.insert(key, serialized);
-            Ok(Some(value))
+            Ok(Some((value, false)))
         } else {
             Ok(None)
         }

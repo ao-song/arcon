@@ -112,7 +112,7 @@ impl Backend for Tikv {
 
         let cb = CacheBundle {
             hash: RefCell::new(HashMap::new()),
-            size: 10_000,
+            size: 500_000,
         };
 
         Ok(Tikv {
