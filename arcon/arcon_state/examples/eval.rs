@@ -88,7 +88,8 @@ fn main() {
     }
 
     let tikv = TestDb::new();
-    let mut eval_map: Handle<MapState<Vec<u8>, Vec<u8>>, i32, i32> = Handle::map("map").with_item_key(0).with_namespace(0);
+    let mut eval_map: Handle<MapState<Vec<u8>, Vec<u8>>, i32, i32> =
+        Handle::map("map").with_item_key(0).with_namespace(0);
     tikv.register_map_handle(&mut eval_map);
     let map = eval_map.activate(tikv.clone());
 
@@ -115,7 +116,7 @@ fn main() {
     let _ret = measure(out, || {
         let key: Vec<_> = make_key(rng.usize(0..entry_num), key_size);
         map.get(&key)?;
-        Ok(true)
+        Ok(false)
     });
 
     println!("Now measure random read on hashmap...");
