@@ -25,19 +25,20 @@ impl CacheOps for Tikv {
             record_bytes_read(handle.name(), serialized.len() as u64, self.name.as_str());
             let value = protobuf::deserialize(&serialized)?;
             Ok(Some((value, true)))
-        } else if let Some(serialized) = self.get(&handle.id, &key)? {
+        } else if let Some(serialized1) = self.get(&handle.id, &key)? {
             #[cfg(feature = "metrics")]
-            record_bytes_read(handle.name(), serialized.len() as u64, self.name.as_str());
-            let value = protobuf::deserialize(&serialized)?;
+            record_bytes_read(handle.name(), serialized1.len() as u64, self.name.as_str());
+            let value = protobuf::deserialize(&serialized1)?;
             if map.len() >= cache_size.try_into().unwrap() {
                 for (k, v) in map.iter() {
                     self.put(&handle.id, k, v);
                 }
                 map.clear();
             }
-            map.insert(key, serialized);
+            map.insert(key, serialized1);
             Ok(Some((value, false)))
         } else {
+            // println!("Not found! {:?}", key);
             Ok(None)
         }
     }

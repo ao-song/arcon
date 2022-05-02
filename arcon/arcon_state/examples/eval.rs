@@ -29,7 +29,8 @@ fn measure(
     mut f: impl FnMut() -> Result<bool, Box<dyn Error>>,
 ) -> Result<(), Box<dyn Error>> {
     println!("Measurement started... ");
-    let num_ops = 1_000_000;
+    // let num_ops = 1_000_000;
+    let num_ops = 10_000;
 
     let start = std::time::Instant::now();
 
@@ -91,7 +92,8 @@ fn main() {
     tikv.register_map_handle(&mut eval_map);
     let map = eval_map.activate(tikv.clone());
 
-    let entry_num = 1_000_000usize;
+    // let entry_num = 1_000_000usize;
+    let entry_num = 10_000usize;
     let key_size = 8;
     let value_size = 32;
 
@@ -109,25 +111,24 @@ fn main() {
         }
     }
 
-    // println!("Now measure random read on tikv...");
-    // let _ret = measure(out, || {
-    //     let key: Vec<_> = make_key(rng.usize(0..entry_num), key_size);
-    //     map.get(&key)?;
-    //     Ok(true)
-    // });
+    println!("Now measure random read on tikv...");
+    let _ret = measure(out, || {
+        let key: Vec<_> = make_key(rng.usize(0..entry_num), key_size);
+        map.get(&key)?;
+        Ok(true)
+    });
 
     println!("Now measure random read on hashmap...");
     let out = Box::new(std::io::stdout());
-    let newhandle: Handle<MapState<Vec<u8>, Vec<u8>>, i32, i32> =
-        Handle::map("hashmap").with_item_key(1).with_namespace(1);
+    // let newhandle: Handle<MapState<Vec<u8>, Vec<u8>>, i32, i32> =
+    //     Handle::map("hashmap").with_item_key(1).with_namespace(1);
     let _ret = measure(out, || {
         let key: Vec<_> = make_key(rng.usize(0..entry_num), key_size);
-        let ret = map.backend.hashmap_get(&newhandle, &key)?;
+        let ret = map.backend.hashmap_get(&map.inner, &key)?;
         if let Some((_, hit)) = ret {
             Ok(hit)
         } else {
-            println!("nothing got!");
-            Err("nothing got!".into())
+            Ok(false)
         }
     });
 
