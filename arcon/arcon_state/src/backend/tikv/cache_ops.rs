@@ -10,6 +10,7 @@ use crate::{
 
 use std::{borrow::BorrowMut, collections::HashMap, convert::TryInto};
 
+
 impl CacheOps for Tikv {
     fn hashmap_get<K: Key, V: Value, IK: Metakey, N: Metakey>(
         &self,
@@ -30,9 +31,14 @@ impl CacheOps for Tikv {
             record_bytes_read(handle.name(), serialized1.len() as u64, self.name.as_str());
             let value = protobuf::deserialize(&serialized1)?;
             if map.len() >= cache_size.try_into().unwrap() {
+                // for (k, v) in map.iter() {
+                //     self.put(&handle.id, k, v);
+                // }
+                let mut tmp = Vec::new();
                 for (k, v) in map.iter() {
-                    self.put(&handle.id, k, v);
+                    tmp.push((k.to_owned(), v.to_owned()));
                 }
+                self.batch_put(&handle.id, tmp);
                 map.clear();
             }
             map.insert(key, serialized1);
@@ -73,47 +79,189 @@ impl CacheOps for Tikv {
         &self,
         handle: &Handle<MapState<K, V>, IK, N>,
         key: &K,
-    ) -> Result<Option<V>> {
+    ) -> Result<Option<(V, bool)>> {
         let key = handle.serialize_metakeys_and_key(key)?;
-        if let Some(serialized) = self.get(&handle.id, &key)? {
+        let mut map = self.cache.lru.borrow_mut();
+        let cache_size = self.cache.size;
+
+        if let Some(serialized) = map.get(&key) {
             #[cfg(feature = "metrics")]
             record_bytes_read(handle.name(), serialized.len() as u64, self.name.as_str());
             let value = protobuf::deserialize(&serialized)?;
-            Ok(Some(value))
+            Ok(Some((value, true)))
+        } else if let Some(serialized1) = self.get(&handle.id, &key)? {
+            #[cfg(feature = "metrics")]
+            record_bytes_read(handle.name(), serialized1.len() as u64, self.name.as_str());
+            let value = protobuf::deserialize(&serialized1)?;
+            if map.len() >= cache_size.try_into().unwrap() {
+                // for (k, v) in map.iter() {
+                //     self.put(&handle.id, k, v);
+                // }
+                let mut tmp = Vec::new();
+                for (k, v) in map.iter() {
+                    tmp.push((k.to_owned(), v.to_owned()));
+                }
+                self.batch_put(&handle.id, tmp);
+                map.clear();
+            }
+            map.put(key, serialized1);
+            Ok(Some((value, false)))
         } else {
+            // println!("Not found! {:?}", key);
             Ok(None)
         }
+    }
+
+
+    fn lru_fast_insert<K: Key, V: Value, IK: Metakey, N: Metakey>(
+        &self,
+        handle: &Handle<MapState<K, V>, IK, N>,
+        key: K,
+        value: V,
+    ) -> Result<()> {
+        let key = handle.serialize_metakeys_and_key(&key)?;
+        let serialized = protobuf::serialize(&value)?;
+        let mut map = self.cache.lru.borrow_mut();
+        let cache_size = self.cache.size;
+
+        if map.contains(&key) {
+            map.put(key, serialized);
+        } else {
+            if map.len() >= cache_size.try_into().unwrap() {
+                for (k, v) in map.iter() {
+                    self.put(&handle.id, k, v);
+                }
+                map.clear();
+            }
+            map.put(key, serialized);
+        }
+
+        Ok(())
     }
 
     fn tiny_lfu_get<K: Key, V: Value, IK: Metakey, N: Metakey>(
         &self,
         handle: &Handle<MapState<K, V>, IK, N>,
         key: &K,
-    ) -> Result<Option<V>> {
+    ) -> Result<Option<(V, bool)>> {
         let key = handle.serialize_metakeys_and_key(key)?;
-        if let Some(serialized) = self.get(&handle.id, &key)? {
+        let mut map = self.cache.tinylfu.borrow_mut();
+        let cache_size = self.cache.size;
+
+        if let Some(serialized) = map.get(&key) {
             #[cfg(feature = "metrics")]
             record_bytes_read(handle.name(), serialized.len() as u64, self.name.as_str());
             let value = protobuf::deserialize(&serialized)?;
-            Ok(Some(value))
+            Ok(Some((value, true)))
+        } else if let Some(serialized1) = self.get(&handle.id, &key)? {
+            #[cfg(feature = "metrics")]
+            record_bytes_read(handle.name(), serialized1.len() as u64, self.name.as_str());
+            let value = protobuf::deserialize(&serialized1)?;
+            if map.len() >= cache_size.try_into().unwrap() {
+                // for (k, v) in map.iter() {
+                //     self.put(&handle.id, k, v);
+                // }
+                let mut tmp = Vec::new();
+                for (k, v) in map.iter() {
+                    tmp.push((k.to_owned(), v.to_owned()));
+                }
+                self.batch_put(&handle.id, tmp);
+                map.clear();
+            }
+            map.insert(key, serialized1);
+            Ok(Some((value, false)))
         } else {
+            // println!("Not found! {:?}", key);
             Ok(None)
         }
+    }
+
+    fn tiny_lfu_fast_insert<K: Key, V: Value, IK: Metakey, N: Metakey>(
+        &self,
+        handle: &Handle<MapState<K, V>, IK, N>,
+        key: K,
+        value: V,
+    ) -> Result<()> {
+        let key = handle.serialize_metakeys_and_key(&key)?;
+        let serialized = protobuf::serialize(&value)?;
+        let mut map = self.cache.tinylfu.borrow_mut();
+        let cache_size = self.cache.size;
+
+        if map.contains(&key) {
+            map.insert(key, serialized);
+        } else {
+            if map.len() >= cache_size.try_into().unwrap() {
+                for (k, v) in map.iter() {
+                    self.put(&handle.id, k, v);
+                }
+                map.clear();
+            }
+            map.insert(key, serialized);
+        }
+
+        Ok(())
     }
 
     fn hybrid_get<K: Key, V: Value, IK: Metakey, N: Metakey>(
         &self,
         handle: &Handle<MapState<K, V>, IK, N>,
         key: &K,
-    ) -> Result<Option<V>> {
+    ) -> Result<Option<(V, bool)>> {
         let key = handle.serialize_metakeys_and_key(key)?;
-        if let Some(serialized) = self.get(&handle.id, &key)? {
+        let mut map = self.cache.lru.borrow_mut();
+        let cache_size = self.cache.size;
+
+        if let Some(serialized) = map.get(&key) {
             #[cfg(feature = "metrics")]
             record_bytes_read(handle.name(), serialized.len() as u64, self.name.as_str());
             let value = protobuf::deserialize(&serialized)?;
-            Ok(Some(value))
+            Ok(Some((value, true)))
+        } else if let Some(serialized1) = self.get(&handle.id, &key)? {
+            #[cfg(feature = "metrics")]
+            record_bytes_read(handle.name(), serialized1.len() as u64, self.name.as_str());
+            let value = protobuf::deserialize(&serialized1)?;
+            if map.len() >= cache_size.try_into().unwrap() {
+                // for (k, v) in map.iter() {
+                //     self.put(&handle.id, k, v);
+                // }
+                let mut tmp = Vec::new();
+                for (k, v) in map.iter() {
+                    tmp.push((k.to_owned(), v.to_owned()));
+                }
+                self.batch_put(&handle.id, tmp);
+                map.clear();
+            }
+            map.put(key, serialized1);
+            Ok(Some((value, false)))
         } else {
+            // println!("Not found! {:?}", key);
             Ok(None)
         }
+    }
+
+    fn hybrid_fast_insert<K: Key, V: Value, IK: Metakey, N: Metakey>(
+        &self,
+        handle: &Handle<MapState<K, V>, IK, N>,
+        key: K,
+        value: V,
+    ) -> Result<()> {
+        let key = handle.serialize_metakeys_and_key(&key)?;
+        let serialized = protobuf::serialize(&value)?;
+        let mut map = self.cache.lru.borrow_mut();
+        let cache_size = self.cache.size;
+
+        if map.contains(&key) {
+            map.put(key, serialized);
+        } else {
+            if map.len() >= cache_size.try_into().unwrap() {
+                for (k, v) in map.iter() {
+                    self.put(&handle.id, k, v);
+                }
+                map.clear();
+            }
+            map.put(key, serialized);
+        }
+
+        Ok(())
     }
 }

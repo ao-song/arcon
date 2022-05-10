@@ -5,7 +5,7 @@ use crate::{
     VecState,
 };
 
-use tikv_client::{ColumnFamily, RawClient};
+use tikv_client::{ColumnFamily, RawClient, KvPair};
 
 use tokio::runtime::Runtime;
 
@@ -18,10 +18,14 @@ use std::{
 
 use std::collections::HashMap;
 
-#[derive(Debug)]
+use lru::LruCache;
+use cascara::Cache;
+
 pub struct CacheBundle {
     size: u32,
     hash: RefCell<HashMap<Vec<u8>, Vec<u8>>>,
+    lru: RefCell<LruCache<Vec<u8>, Vec<u8>>>,
+    tinylfu: RefCell<Cache<Vec<u8>, Vec<u8>>>,
 }
 
 pub struct Tikv {
@@ -60,6 +64,24 @@ impl Tikv {
         Ok(self.rt.block_on(async {
             self.client
                 .put(key.as_ref().to_owned(), value.as_ref().to_owned())
+                .await
+                .unwrap()
+        }))
+    }
+
+    #[inline]
+    fn batch_put(
+        &self,
+        cf_name: impl AsRef<str>,
+        pairs: impl IntoIterator<Item = impl Into<KvPair>>
+    ) -> Result<()>
+    {
+        // let cf = ColumnFamily::try_from(cf_name.as_ref()).unwrap();
+        // let client_with_cf = self.client.with_cf(cf);
+
+        Ok(self.rt.block_on(async {
+            self.client
+                .batch_put(pairs)
                 .await
                 .unwrap()
         }))
@@ -110,9 +132,13 @@ impl Backend for Tikv {
             .block_on(RawClient::new(vec![path.to_str().unwrap()]))
             .unwrap();
 
+        let cache_size = 500_000;
+
         let cb = CacheBundle {
             hash: RefCell::new(HashMap::new()),
-            size: 500_000,
+            lru: RefCell::new(LruCache::new(cache_size)),
+            tinylfu: RefCell::new(Cache::new(cache_size)),
+            size: cache_size as u32,
         };
 
         Ok(Tikv {

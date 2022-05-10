@@ -1,5 +1,6 @@
 extern crate arcon_state;
 extern crate fastrand;
+extern crate rand;
 
 use arcon_state::*;
 use std::io::Write;
@@ -10,6 +11,8 @@ use std::{
     path::Path,
     sync::Arc,
 };
+
+use rand::distributions::{Distribution};
 
 fn make_key(i: usize, key_size: usize) -> Vec<u8> {
     i.to_le_bytes()
@@ -125,6 +128,79 @@ fn main() {
     let _ret = measure(out, || {
         let key: Vec<_> = make_key(rng.usize(0..entry_num), key_size);
         let ret = map.backend.hashmap_get(&map.inner, &key)?;
+        if let Some((_, hit)) = ret {
+            Ok(hit)
+        } else {
+            Ok(false)
+        }
+    });
+
+
+    println!("Now measure random read on lru...");
+    let out = Box::new(std::io::stdout());
+    // let newhandle: Handle<MapState<Vec<u8>, Vec<u8>>, i32, i32> =
+    //     Handle::map("hashmap").with_item_key(1).with_namespace(1);
+    let _ret = measure(out, || {
+        let key: Vec<_> = make_key(rng.usize(0..entry_num), key_size);
+        let ret = map.backend.lru_get(&map.inner, &key)?;
+        if let Some((_, hit)) = ret {
+            Ok(hit)
+        } else {
+            Ok(false)
+        }
+    });
+
+    println!("Now measure random read on tiny lfu...");
+    let out = Box::new(std::io::stdout());
+    // let newhandle: Handle<MapState<Vec<u8>, Vec<u8>>, i32, i32> =
+    //     Handle::map("hashmap").with_item_key(1).with_namespace(1);
+    let _ret = measure(out, || {
+        let key: Vec<_> = make_key(rng.usize(0..entry_num), key_size);
+        let ret = map.backend.tiny_lfu_get(&map.inner, &key)?;
+        if let Some((_, hit)) = ret {
+            Ok(hit)
+        } else {
+            Ok(false)
+        }
+    });
+
+
+    println!("Now measure uniform read on hashmap...");
+    let out = Box::new(std::io::stdout());
+    // let newhandle: Handle<MapState<Vec<u8>, Vec<u8>>, i32, i32> =
+    //     Handle::map("hashmap").with_item_key(1).with_namespace(1);
+    let _ret = measure(out, || {
+        let key: Vec<_> = make_key(rng.usize(0..entry_num), key_size);
+        let ret = map.backend.hashmap_get(&map.inner, &key)?;
+        if let Some((_, hit)) = ret {
+            Ok(hit)
+        } else {
+            Ok(false)
+        }
+    });
+
+
+    println!("Now measure uniform read on lru...");
+    let out = Box::new(std::io::stdout());
+    // let newhandle: Handle<MapState<Vec<u8>, Vec<u8>>, i32, i32> =
+    //     Handle::map("hashmap").with_item_key(1).with_namespace(1);
+    let _ret = measure(out, || {
+        let key: Vec<_> = make_key(rng.usize(0..entry_num), key_size);
+        let ret = map.backend.lru_get(&map.inner, &key)?;
+        if let Some((_, hit)) = ret {
+            Ok(hit)
+        } else {
+            Ok(false)
+        }
+    });
+
+    println!("Now measure uniform read on tiny lfu...");
+    let out = Box::new(std::io::stdout());
+    // let newhandle: Handle<MapState<Vec<u8>, Vec<u8>>, i32, i32> =
+    //     Handle::map("hashmap").with_item_key(1).with_namespace(1);
+    let _ret = measure(out, || {
+        let key: Vec<_> = make_key(rng.usize(0..entry_num), key_size);
+        let ret = map.backend.tiny_lfu_get(&map.inner, &key)?;
         if let Some((_, hit)) = ret {
             Ok(hit)
         } else {
