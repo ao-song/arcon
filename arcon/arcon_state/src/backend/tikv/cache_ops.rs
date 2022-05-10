@@ -10,7 +10,6 @@ use crate::{
 
 use std::{borrow::BorrowMut, collections::HashMap, convert::TryInto};
 
-
 impl CacheOps for Tikv {
     fn hashmap_get<K: Key, V: Value, IK: Metakey, N: Metakey>(
         &self,
@@ -111,7 +110,6 @@ impl CacheOps for Tikv {
             Ok(None)
         }
     }
-
 
     fn lru_fast_insert<K: Key, V: Value, IK: Metakey, N: Metakey>(
         &self,
@@ -221,15 +219,18 @@ impl CacheOps for Tikv {
             record_bytes_read(handle.name(), serialized1.len() as u64, self.name.as_str());
             let value = protobuf::deserialize(&serialized1)?;
             if map.len() >= cache_size.try_into().unwrap() {
-                // for (k, v) in map.iter() {
-                //     self.put(&handle.id, k, v);
-                // }
-                let mut tmp = Vec::new();
-                for (k, v) in map.iter() {
-                    tmp.push((k.to_owned(), v.to_owned()));
+                if let Some((K_POP, V_POP)) = map.pop_lru() {
+                    self.put(&handle.id, K_POP, V_POP);
                 }
-                self.batch_put(&handle.id, tmp);
-                map.clear();
+                // // for (k, v) in map.iter() {
+                // //     self.put(&handle.id, k, v);
+                // // }
+                // let mut tmp = Vec::new();
+                // for (k, v) in map.iter() {
+                //     tmp.push((k.to_owned(), v.to_owned()));
+                // }
+                // self.batch_put(&handle.id, tmp);
+                // map.clear();
             }
             map.put(key, serialized1);
             Ok(Some((value, false)))

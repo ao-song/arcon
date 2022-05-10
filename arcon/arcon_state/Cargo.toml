@@ -55,3 +55,4 @@ optional = true
 tempfile = "3"
 fastrand = "1.7.0"
 rand = "0.8.5"
+zipf = "7.0.0"

@@ -1,6 +1,7 @@
 extern crate arcon_state;
 extern crate fastrand;
 extern crate rand;
+extern crate zipf;
 
 use arcon_state::*;
 use std::io::Write;
@@ -12,7 +13,7 @@ use std::{
     sync::Arc,
 };
 
-use rand::distributions::{Distribution};
+use rand::distributions::Distribution;
 
 fn make_key(i: usize, key_size: usize) -> Vec<u8> {
     i.to_le_bytes()
@@ -136,7 +137,6 @@ fn main() {
         }
     });
 
-
     println!("Now measure random read on lru...");
     let out = Box::new(std::io::stdout());
     // let newhandle: Handle<MapState<Vec<u8>, Vec<u8>>, i32, i32> =
@@ -165,13 +165,15 @@ fn main() {
         }
     });
 
+    let mut rng = rand::thread_rng();
+    let mut zipf = zipf::ZipfDistribution::new(entry_num, 1.0).unwrap();
 
-    println!("Now measure uniform read on hashmap...");
+    println!("Now measure zipf read on hashmap...");
     let out = Box::new(std::io::stdout());
     // let newhandle: Handle<MapState<Vec<u8>, Vec<u8>>, i32, i32> =
     //     Handle::map("hashmap").with_item_key(1).with_namespace(1);
     let _ret = measure(out, || {
-        let key: Vec<_> = make_key(rng.usize(0..entry_num), key_size);
+        let key: Vec<_> = make_key(zipf.sample(&mut rng), key_size);
         let ret = map.backend.hashmap_get(&map.inner, &key)?;
         if let Some((_, hit)) = ret {
             Ok(hit)
@@ -180,13 +182,12 @@ fn main() {
         }
     });
 
-
-    println!("Now measure uniform read on lru...");
+    println!("Now measure zipf read on lru...");
     let out = Box::new(std::io::stdout());
     // let newhandle: Handle<MapState<Vec<u8>, Vec<u8>>, i32, i32> =
     //     Handle::map("hashmap").with_item_key(1).with_namespace(1);
     let _ret = measure(out, || {
-        let key: Vec<_> = make_key(rng.usize(0..entry_num), key_size);
+        let key: Vec<_> = make_key(zipf.sample(&mut rng), key_size);
         let ret = map.backend.lru_get(&map.inner, &key)?;
         if let Some((_, hit)) = ret {
             Ok(hit)
@@ -195,12 +196,12 @@ fn main() {
         }
     });
 
-    println!("Now measure uniform read on tiny lfu...");
+    println!("Now measure zipf read on tiny lfu...");
     let out = Box::new(std::io::stdout());
     // let newhandle: Handle<MapState<Vec<u8>, Vec<u8>>, i32, i32> =
     //     Handle::map("hashmap").with_item_key(1).with_namespace(1);
     let _ret = measure(out, || {
-        let key: Vec<_> = make_key(rng.usize(0..entry_num), key_size);
+        let key: Vec<_> = make_key(zipf.sample(&mut rng), key_size);
         let ret = map.backend.tiny_lfu_get(&map.inner, &key)?;
         if let Some((_, hit)) = ret {
             Ok(hit)
