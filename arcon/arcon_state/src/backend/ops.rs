@@ -53,19 +53,40 @@ pub trait CacheOps {
         &self,
         handle: &Handle<MapState<K, V>, IK, N>,
         key: &K,
-    ) -> Result<Option<V>>;
+    ) -> Result<Option<(V, bool)>>;
+
+    fn lru_fast_insert<K: Key, V: Value, IK: Metakey, N: Metakey>(
+        &self,
+        handle: &Handle<MapState<K, V>, IK, N>,
+        key: K,
+        value: V,
+    ) -> Result<()>;
 
     fn tiny_lfu_get<K: Key, V: Value, IK: Metakey, N: Metakey>(
         &self,
         handle: &Handle<MapState<K, V>, IK, N>,
         key: &K,
-    ) -> Result<Option<V>>;
+    ) -> Result<Option<(V, bool)>>;
+
+    fn tiny_lfu_fast_insert<K: Key, V: Value, IK: Metakey, N: Metakey>(
+        &self,
+        handle: &Handle<MapState<K, V>, IK, N>,
+        key: K,
+        value: V,
+    ) -> Result<()>;
 
     fn hybrid_get<K: Key, V: Value, IK: Metakey, N: Metakey>(
         &self,
         handle: &Handle<MapState<K, V>, IK, N>,
         key: &K,
-    ) -> Result<Option<V>>;
+    ) -> Result<Option<(V, bool)>>;
+
+    fn hybrid_fast_insert<K: Key, V: Value, IK: Metakey, N: Metakey>(
+        &self,
+        handle: &Handle<MapState<K, V>, IK, N>,
+        key: K,
+        value: V,
+    ) -> Result<()>;
 }
 
 pub trait MapOps {
