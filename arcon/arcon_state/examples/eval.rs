@@ -223,8 +223,8 @@ fn main() {
 
     let out = Box::new(std::io::stdout());
 
-    println!("Draw the Zipf distribution");
-    zipf_plot();
+    // println!("Draw the Zipf distribution");
+    // zipf_plot();
 
     // // generate data in db
     // {
