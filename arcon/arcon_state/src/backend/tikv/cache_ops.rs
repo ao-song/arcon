@@ -30,15 +30,16 @@ impl CacheOps for Tikv {
             record_bytes_read(handle.name(), serialized1.len() as u64, self.name.as_str());
             let value = protobuf::deserialize(&serialized1)?;
             if map.len() >= cache_size.try_into().unwrap() {
-                // for (k, v) in map.iter() {
-                //     self.put(&handle.id, k, v);
-                // }
-                let mut tmp = Vec::new();
-                for (k, v) in map.iter() {
-                    tmp.push((k.to_owned(), v.to_owned()));
+                // If it is full, remove the first element to make space
+                if let Some((k, v)) = map.clone().iter().next() {
+                    map.remove(k);
                 }
-                self.batch_put(&handle.id, tmp);
-                map.clear();
+                // let mut tmp = Vec::new();
+                // for (k, v) in map.iter() {
+                //     tmp.push((k.to_owned(), v.to_owned()));
+                // }
+                // self.batch_put(&handle.id, tmp);
+                // map.clear();
             }
             map.insert(key, serialized1);
             Ok(Some((value, false)))
@@ -59,17 +60,20 @@ impl CacheOps for Tikv {
         let mut map = self.cache.hash.borrow_mut();
         let cache_size = self.cache.size;
 
-        if map.contains_key(&key) {
-            map.insert(key, serialized);
-        } else {
-            if map.len() >= cache_size.try_into().unwrap() {
-                for (k, v) in map.iter() {
-                    self.put(&handle.id, k, v);
-                }
-                map.clear();
-            }
-            map.insert(key, serialized);
-        }
+        // if map.contains_key(&key) {
+        //     map.insert(key, serialized);
+        // } else {
+        //     if map.len() >= cache_size.try_into().unwrap() {
+        //         for (k, v) in map.iter() {
+        //             self.put(&handle.id, k, v);
+        //         }
+        //         map.clear();
+        //     }
+        //     map.insert(key, serialized);
+        // }
+        map.remove(&key);
+        self.put(&handle.id, key, serialized);
+
 
         Ok(())
     }
@@ -92,17 +96,19 @@ impl CacheOps for Tikv {
             #[cfg(feature = "metrics")]
             record_bytes_read(handle.name(), serialized1.len() as u64, self.name.as_str());
             let value = protobuf::deserialize(&serialized1)?;
-            if map.len() >= cache_size.try_into().unwrap() {
-                // for (k, v) in map.iter() {
-                //     self.put(&handle.id, k, v);
-                // }
-                let mut tmp = Vec::new();
-                for (k, v) in map.iter() {
-                    tmp.push((k.to_owned(), v.to_owned()));
-                }
-                self.batch_put(&handle.id, tmp);
-                map.clear();
-            }
+            // if map.len() >= cache_size.try_into().unwrap() {
+            //     // If it is full, remove the first element to make space
+            //     map.pop_lru();
+            //     // // for (k, v) in map.iter() {
+            //     // //     self.put(&handle.id, k, v);
+            //     // // }
+            //     // let mut tmp = Vec::new();
+            //     // for (k, v) in map.iter() {
+            //     //     tmp.push((k.to_owned(), v.to_owned()));
+            //     // }
+            //     // self.batch_put(&handle.id, tmp);
+            //     // map.clear();
+            // }
             map.put(key, serialized1);
             Ok(Some((value, false)))
         } else {
@@ -122,17 +128,19 @@ impl CacheOps for Tikv {
         let mut map = self.cache.lru.borrow_mut();
         let cache_size = self.cache.size;
 
-        if map.contains(&key) {
-            map.put(key, serialized);
-        } else {
-            if map.len() >= cache_size.try_into().unwrap() {
-                for (k, v) in map.iter() {
-                    self.put(&handle.id, k, v);
-                }
-                map.clear();
-            }
-            map.put(key, serialized);
-        }
+        // if map.contains(&key) {
+        //     map.put(key, serialized);
+        // } else {
+        //     if map.len() >= cache_size.try_into().unwrap() {
+        //         for (k, v) in map.iter() {
+        //             self.put(&handle.id, k, v);
+        //         }
+        //         map.clear();
+        //     }
+        //     map.put(key, serialized);
+        // }
+        map.pop(&key);
+        self.put(&handle.id, key, serialized);
 
         Ok(())
     }
@@ -155,17 +163,18 @@ impl CacheOps for Tikv {
             #[cfg(feature = "metrics")]
             record_bytes_read(handle.name(), serialized1.len() as u64, self.name.as_str());
             let value = protobuf::deserialize(&serialized1)?;
-            if map.len() >= cache_size.try_into().unwrap() {
-                // for (k, v) in map.iter() {
-                //     self.put(&handle.id, k, v);
-                // }
-                let mut tmp = Vec::new();
-                for (k, v) in map.iter() {
-                    tmp.push((k.to_owned(), v.to_owned()));
-                }
-                self.batch_put(&handle.id, tmp);
-                map.clear();
-            }
+            // if map.len() >= cache_size.try_into().unwrap() {
+
+            //     // // for (k, v) in map.iter() {
+            //     // //     self.put(&handle.id, k, v);
+            //     // // }
+            //     // let mut tmp = Vec::new();
+            //     // for (k, v) in map.iter() {
+            //     //     tmp.push((k.to_owned(), v.to_owned()));
+            //     // }
+            //     // self.batch_put(&handle.id, tmp);
+            //     // map.clear();
+            // }
             map.insert(key, serialized1);
             Ok(Some((value, false)))
         } else {
@@ -185,17 +194,20 @@ impl CacheOps for Tikv {
         let mut map = self.cache.tinylfu.borrow_mut();
         let cache_size = self.cache.size;
 
-        if map.contains(&key) {
-            map.insert(key, serialized);
-        } else {
-            if map.len() >= cache_size.try_into().unwrap() {
-                for (k, v) in map.iter() {
-                    self.put(&handle.id, k, v);
-                }
-                map.clear();
-            }
-            map.insert(key, serialized);
-        }
+        // if map.contains(&key) {
+        //     map.insert(key, serialized);
+        // } else {
+        //     if map.len() >= cache_size.try_into().unwrap() {
+        //         for (k, v) in map.iter() {
+        //             self.put(&handle.id, k, v);
+        //         }
+        //         map.clear();
+        //     }
+        //     map.insert(key, serialized);
+        // }
+
+        map.remove(&key);
+        self.put(&handle.id, key, serialized);
 
         Ok(())
     }

@@ -217,6 +217,7 @@ fn main() {
     let entry_num = 100_000usize;
     let key_size = 8;
     let value_size = 32;
+    let cache_size = 20_000usize;
 
     let rng = fastrand::Rng::new();
     rng.seed(6);
@@ -226,19 +227,22 @@ fn main() {
     // println!("Draw the Zipf distribution");
     // zipf_plot();
 
-    // // generate data in db
-    // {
-    //     for i in 0..entry_num {
-    //         let key = make_key(i, key_size);
-    //         let value = make_value(value_size, &rng);
-    //         let _ret = map.fast_insert(key, value);
-    //     }
-    // }
+    // generate data in db
+    {
+        for i in 0..entry_num {
+            let key = make_key(i, key_size);
+            let value = make_value(value_size, &rng);
+            let _ret = map.fast_insert(key, value);
+        }
+    }
 
     println!("Now measure random read on tikv...");
     let _ret = measure(out, || {
         let key: Vec<_> = make_key(rng.usize(0..entry_num), key_size);
         map.get(&key)?;
+        let new_key: Vec<_> = make_key(rng.usize(0..entry_num), key_size);
+        let new_value = make_value(value_size, &rng);
+        map.insert(new_key, new_value);
         Ok(true)
     });
 
@@ -246,9 +250,17 @@ fn main() {
     let out = Box::new(std::io::stdout());
     // let newhandle: Handle<MapState<Vec<u8>, Vec<u8>>, i32, i32> =
     //     Handle::map("hashmap").with_item_key(1).with_namespace(1);
+    // for _i in 0..cache_size {
+    //     // Random fill the cache first
+    //     let key: Vec<_> = make_key(rng.usize(0..entry_num), key_size);
+    //     map.backend.hashmap_get(&map.inner, &key);
+    // }
     let _ret = measure(out, || {
         let key: Vec<_> = make_key(rng.usize(0..entry_num), key_size);
         let ret = map.backend.hashmap_get(&map.inner, &key)?;
+        let new_key: Vec<_> = make_key(rng.usize(0..entry_num), key_size);
+        let new_value = make_value(value_size, &rng);
+        map.backend.hashmap_fast_insert(&map.inner, new_key, new_value);
         if let Some((_, hit)) = ret {
             Ok(hit)
         } else {
@@ -260,9 +272,17 @@ fn main() {
     let out = Box::new(std::io::stdout());
     // let newhandle: Handle<MapState<Vec<u8>, Vec<u8>>, i32, i32> =
     //     Handle::map("hashmap").with_item_key(1).with_namespace(1);
+    // for _i in 0..cache_size {
+    //     // Random fill the cache first
+    //     let key: Vec<_> = make_key(rng.usize(0..entry_num), key_size);
+    //     map.backend.lru_get(&map.inner, &key);
+    // }
     let _ret = measure(out, || {
         let key: Vec<_> = make_key(rng.usize(0..entry_num), key_size);
         let ret = map.backend.lru_get(&map.inner, &key)?;
+        let new_key: Vec<_> = make_key(rng.usize(0..entry_num), key_size);
+        let new_value = make_value(value_size, &rng);
+        map.backend.lru_fast_insert(&map.inner, new_key, new_value);
         if let Some((_, hit)) = ret {
             Ok(hit)
         } else {
@@ -274,9 +294,17 @@ fn main() {
     let out = Box::new(std::io::stdout());
     // let newhandle: Handle<MapState<Vec<u8>, Vec<u8>>, i32, i32> =
     //     Handle::map("hashmap").with_item_key(1).with_namespace(1);
+    // for _i in 0..cache_size {
+    //     // Random fill the cache first
+    //     let key: Vec<_> = make_key(rng.usize(0..entry_num), key_size);
+    //     map.backend.tiny_lfu_get(&map.inner, &key);
+    // }
     let _ret = measure(out, || {
         let key: Vec<_> = make_key(rng.usize(0..entry_num), key_size);
         let ret = map.backend.tiny_lfu_get(&map.inner, &key)?;
+        let new_key: Vec<_> = make_key(rng.usize(0..entry_num), key_size);
+        let new_value = make_value(value_size, &rng);
+        map.backend.tiny_lfu_fast_insert(&map.inner, new_key, new_value);
         if let Some((_, hit)) = ret {
             Ok(hit)
         } else {
@@ -287,15 +315,26 @@ fn main() {
     let mut rng = rand::thread_rng();
     let mut zipf = zipf::ZipfDistribution::new(entry_num, 1.0).unwrap();
 
+    let fast_rng = fastrand::Rng::new();
+    fast_rng.seed(6);
+
     println!("Now measure zipf read on hashmap...");
     let out = Box::new(std::io::stdout());
     // let newhandle: Handle<MapState<Vec<u8>, Vec<u8>>, i32, i32> =
     //     Handle::map("hashmap").with_item_key(1).with_namespace(1);
+    // for _i in 0..cache_size {
+    //     // Random fill the cache first
+    //     let key: Vec<_> = make_key(fast_rng.usize(0..entry_num), key_size);
+    //     map.backend.hashmap_get(&map.inner, &key);
+    // }
     let _ret = measure(out, || {
         // let mut rng = rand::thread_rng();
         // let mut zipf = zipf::ZipfDistribution::new(entry_num, 1.0).unwrap();
         let key: Vec<_> = make_key(zipf.sample(&mut rng), key_size);
         let ret = map.backend.hashmap_get(&map.inner, &key)?;
+        // let new_key: Vec<_> = make_key(zipf.sample(&mut rng), key_size);
+        // let new_value = make_value(value_size, &fast_rng);
+        // map.backend.hashmap_fast_insert(&map.inner, new_key, new_value);
         if let Some((_, hit)) = ret {
             Ok(hit)
         } else {
@@ -307,11 +346,19 @@ fn main() {
     let out = Box::new(std::io::stdout());
     // let newhandle: Handle<MapState<Vec<u8>, Vec<u8>>, i32, i32> =
     //     Handle::map("hashmap").with_item_key(1).with_namespace(1);
+    // for _i in 0..cache_size {
+    //     // Random fill the cache first
+    //     let key: Vec<_> = make_key(fast_rng.usize(0..entry_num), key_size);
+    //     map.backend.lru_get(&map.inner, &key);
+    // }
     let _ret = measure(out, || {
         // let mut rng = rand::thread_rng();
         // let mut zipf = zipf::ZipfDistribution::new(entry_num, 1.0).unwrap();
         let key: Vec<_> = make_key(zipf.sample(&mut rng), key_size);
         let ret = map.backend.lru_get(&map.inner, &key)?;
+        // let new_key: Vec<_> = make_key(zipf.sample(&mut rng), key_size);
+        // let new_value = make_value(value_size, &fast_rng);
+        // map.backend.lru_fast_insert(&map.inner, new_key, new_value);
         if let Some((_, hit)) = ret {
             Ok(hit)
         } else {
@@ -323,11 +370,19 @@ fn main() {
     let out = Box::new(std::io::stdout());
     // let newhandle: Handle<MapState<Vec<u8>, Vec<u8>>, i32, i32> =
     //     Handle::map("hashmap").with_item_key(1).with_namespace(1);
+    // for _i in 0..cache_size {
+    //     // Random fill the cache first
+    //     let key: Vec<_> = make_key(fast_rng.usize(0..entry_num), key_size);
+    //     map.backend.tiny_lfu_get(&map.inner, &key);
+    // }
     let _ret = measure(out, || {
         // let mut rng = rand::thread_rng();
         // let mut zipf = zipf::ZipfDistribution::new(entry_num, 1.0).unwrap();
         let key: Vec<_> = make_key(zipf.sample(&mut rng), key_size);
         let ret = map.backend.tiny_lfu_get(&map.inner, &key)?;
+        // let new_key: Vec<_> = make_key(zipf.sample(&mut rng), key_size);
+        // let new_value = make_value(value_size, &fast_rng);
+        // map.backend.tiny_lfu_fast_insert(&map.inner, new_key, new_value);
         if let Some((_, hit)) = ret {
             Ok(hit)
         } else {
