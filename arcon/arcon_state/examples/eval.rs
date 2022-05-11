@@ -14,6 +14,7 @@ use std::{
 };
 
 use rand::distributions::Distribution;
+use charts::{Chart, ScaleLinear, MarkerType, PointLabelPosition, LineSeriesView, Color};
 
 fn make_key(i: usize, key_size: usize) -> Vec<u8> {
     i.to_le_bytes()
@@ -70,6 +71,112 @@ fn measure(
     Ok(())
 }
 
+fn zipf_plot() {
+    let mut rng = rand::thread_rng();
+    let mut zipf = zipf::ZipfDistribution::new(99, 1.0).unwrap();
+
+    let mut line = vec![0; 100];
+    for _i in 0..1000 {
+        let n = zipf.sample(&mut rng);
+        line[n] = line[n] + 1;
+    }
+
+    // Define chart related sizes.
+    let width = 800;
+    let height = 600;
+    let (top, right, bottom, left) = (90, 40, 50, 60);
+
+    // Create a band scale that will interpolate values in [0, 200] to values in the
+    // [0, availableWidth] range (the width of the chart without the margins).
+    let x = ScaleLinear::new()
+        .set_domain(vec![0_f32, 100_f32])
+        .set_range(vec![0, width - left - right]);
+
+    // Create a linear scale that will interpolate values in [0, 100] range to corresponding
+    // values in [availableHeight, 0] range (the height of the chart without the margins).
+    // The [availableHeight, 0] range is inverted because SVGs coordinate system's origin is
+    // in top left corner, while chart's origin is in bottom left corner, hence we need to invert
+    // the range on Y axis for the chart to display as though its origin is at bottom left.
+    let y = ScaleLinear::new()
+        .set_domain(vec![0_f32, 300_f32])
+        .set_range(vec![height - top - bottom, 0]);
+
+    // You can use your own iterable as data as long as its items implement the `PointDatum` trait.
+    let mut line_data = vec![(0_f32, 0_f32); 100];
+    for i in 0..100 {
+        line_data[i] = (i as f32, line[i] as f32);
+    }
+
+    let mut zipf = zipf::ZipfDistribution::new(99, 0.5).unwrap();
+
+    let mut line1 = vec![0; 100];
+    for _i in 0..1000 {
+        let n = zipf.sample(&mut rng);
+        line1[n] = line1[n] + 1;
+    }
+
+    let mut line_data1 = vec![(0_f32, 0_f32); 100];
+    for i in 0..100 {
+        line_data1[i] = (i as f32, line1[i] as f32);
+    }
+
+    let mut zipf = zipf::ZipfDistribution::new(99, 0.1).unwrap();
+
+    let mut line2 = vec![0; 100];
+    for _i in 0..1000 {
+        let n = zipf.sample(&mut rng);
+        line2[n] = line2[n] + 1;
+    }
+
+    let mut line_data2 = vec![(0_f32, 0_f32); 100];
+    for i in 0..100 {
+        line_data2[i] = (i as f32, line2[i] as f32);
+    }
+
+    // Create Line series view that is going to represent the data.
+    let line_view = LineSeriesView::new()
+        .set_x_scale(&x)
+        .set_y_scale(&y)
+        .set_marker_type(MarkerType::X)
+        .set_label_visibility(false)
+        .set_label_position(PointLabelPosition::N)
+        .set_colors(Color::from_vec_of_hex_strings(vec!["#aa0000"]))
+        .load_data(&line_data).unwrap();
+
+    let line_view1 = LineSeriesView::new()
+        .set_x_scale(&x)
+        .set_y_scale(&y)
+        .set_marker_type(MarkerType::X)
+        .set_label_visibility(false)
+        .set_colors(Color::from_vec_of_hex_strings(vec!["#00aa00"]))
+        .set_label_position(PointLabelPosition::N)
+        .load_data(&line_data1).unwrap();
+
+    let line_view2 = LineSeriesView::new()
+        .set_x_scale(&x)
+        .set_y_scale(&y)
+        .set_marker_type(MarkerType::X)
+        .set_label_visibility(false)
+        .set_colors(Color::from_vec_of_hex_strings(vec!["#0000aa"]))
+        .set_label_position(PointLabelPosition::N)
+        .load_data(&line_data2).unwrap();
+
+    // Generate and save the chart.
+    Chart::new()
+        .set_width(width)
+        .set_height(height)
+        .set_margins(top, right, bottom, left)
+        .add_title(String::from("Zipf Distribution"))
+        .add_view(&line_view)
+        .add_view(&line_view1)
+        .add_view(&line_view2)
+        .add_axis_bottom(&x)
+        .add_axis_left(&y)
+        .add_left_axis_label("Appearance Number")
+        .add_bottom_axis_label("Elements")
+        .save("zipf.svg").unwrap();
+}
+
 fn main() {
     pub struct TestDb {
         tikv: Arc<Tikv>,
@@ -115,6 +222,9 @@ fn main() {
     rng.seed(6);
 
     let out = Box::new(std::io::stdout());
+
+    println!("Draw the Zipf distribution");
+    zipf_plot();
 
     // // generate data in db
     // {
