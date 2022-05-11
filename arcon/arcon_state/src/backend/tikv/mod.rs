@@ -128,7 +128,7 @@ impl Backend for Tikv {
             .block_on(RawClient::new(vec![path.to_str().unwrap()]))
             .unwrap();
 
-        let cache_size = 10_000;
+        let cache_size = 100_000;
 
         let cb = CacheBundle {
             hash: RefCell::new(HashMap::new()),

@@ -41,11 +41,20 @@ fn measure(
     let mut ops_done = 0usize;
     let mut hit = 0usize;
     for i in 0..num_ops {
-        let h = f()?;
-        ops_done += 1;
-        if h {
-            hit += 1;
+        match f() {
+            Ok(h) => {
+                if h {
+                    hit += 1;
+                }
+                ops_done += 1;
+            },
+            Err(_) => {},
         }
+        // let h = f()?;
+        // ops_done += 1;
+        // if h {
+        //     hit += 1;
+        // }
     }
 
     let elapsed = start.elapsed();
@@ -98,7 +107,7 @@ fn main() {
     let map = eval_map.activate(tikv.clone());
 
     // let entry_num = 1_000_000usize;
-    let entry_num = 10_000usize;
+    let entry_num = 100_000usize;
     let key_size = 8;
     let value_size = 32;
 
@@ -107,20 +116,20 @@ fn main() {
 
     let out = Box::new(std::io::stdout());
 
-    // generate data in db
-    {
-        for i in 0..entry_num {
-            let key = make_key(i, key_size);
-            let value = make_value(value_size, &rng);
-            let _ret = map.fast_insert(key, value);
-        }
-    }
+    // // generate data in db
+    // {
+    //     for i in 0..entry_num {
+    //         let key = make_key(i, key_size);
+    //         let value = make_value(value_size, &rng);
+    //         let _ret = map.fast_insert(key, value);
+    //     }
+    // }
 
     println!("Now measure random read on tikv...");
     let _ret = measure(out, || {
         let key: Vec<_> = make_key(rng.usize(0..entry_num), key_size);
         map.get(&key)?;
-        Ok(false)
+        Ok(true)
     });
 
     println!("Now measure random read on hashmap...");
@@ -133,7 +142,7 @@ fn main() {
         if let Some((_, hit)) = ret {
             Ok(hit)
         } else {
-            Ok(false)
+            Err("Oops".into())
         }
     });
 
@@ -147,7 +156,7 @@ fn main() {
         if let Some((_, hit)) = ret {
             Ok(hit)
         } else {
-            Ok(false)
+            Err("Oops".into())
         }
     });
 
@@ -161,7 +170,7 @@ fn main() {
         if let Some((_, hit)) = ret {
             Ok(hit)
         } else {
-            Ok(false)
+            Err("Oops".into())
         }
     });
 
@@ -173,12 +182,14 @@ fn main() {
     // let newhandle: Handle<MapState<Vec<u8>, Vec<u8>>, i32, i32> =
     //     Handle::map("hashmap").with_item_key(1).with_namespace(1);
     let _ret = measure(out, || {
+        // let mut rng = rand::thread_rng();
+        // let mut zipf = zipf::ZipfDistribution::new(entry_num, 1.0).unwrap();
         let key: Vec<_> = make_key(zipf.sample(&mut rng), key_size);
         let ret = map.backend.hashmap_get(&map.inner, &key)?;
         if let Some((_, hit)) = ret {
             Ok(hit)
         } else {
-            Ok(false)
+            Err("Oops".into())
         }
     });
 
@@ -187,12 +198,14 @@ fn main() {
     // let newhandle: Handle<MapState<Vec<u8>, Vec<u8>>, i32, i32> =
     //     Handle::map("hashmap").with_item_key(1).with_namespace(1);
     let _ret = measure(out, || {
+        // let mut rng = rand::thread_rng();
+        // let mut zipf = zipf::ZipfDistribution::new(entry_num, 1.0).unwrap();
         let key: Vec<_> = make_key(zipf.sample(&mut rng), key_size);
         let ret = map.backend.lru_get(&map.inner, &key)?;
         if let Some((_, hit)) = ret {
             Ok(hit)
         } else {
-            Ok(false)
+            Err("Oops".into())
         }
     });
 
@@ -201,12 +214,14 @@ fn main() {
     // let newhandle: Handle<MapState<Vec<u8>, Vec<u8>>, i32, i32> =
     //     Handle::map("hashmap").with_item_key(1).with_namespace(1);
     let _ret = measure(out, || {
+        // let mut rng = rand::thread_rng();
+        // let mut zipf = zipf::ZipfDistribution::new(entry_num, 1.0).unwrap();
         let key: Vec<_> = make_key(zipf.sample(&mut rng), key_size);
         let ret = map.backend.tiny_lfu_get(&map.inner, &key)?;
         if let Some((_, hit)) = ret {
             Ok(hit)
         } else {
-            Ok(false)
+            Err("Oops".into())
         }
     });
 
