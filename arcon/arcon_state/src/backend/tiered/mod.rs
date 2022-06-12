@@ -9,15 +9,18 @@ use tikv_client::{KvPair, RawClient};
 
 use tokio::runtime::Runtime;
 
+use lru::LruCache;
+
 use rocksdb::{
     checkpoint::Checkpoint, ColumnFamily, ColumnFamilyDescriptor, DBPinnableSlice, Options,
     SliceTransform, WriteBatch, WriteOptions, DB,
 };
 use std::{
     cell::UnsafeCell,
-    collections::HashSet,
+    collections::{HashSet, VecDeque},
     env, fs,
     path::{Path, PathBuf},
+    thread,
 };
 
 unsafe impl Send for Tiered {}
@@ -30,6 +33,8 @@ pub struct Tiered {
     name: String,
     tikv: RawClient,
     rt: Runtime,
+    activecache: RefCell<LruCache<Vec<u8>, Vec<u8>>>,
+    cachelist: RefCell<VecDeque<LruCache<Vec<u8>, Vec<u8>>>>,
 }
 
 // we use epochs, so WAL is useless for us
@@ -171,6 +176,17 @@ impl Backend for Tiered {
             fs::create_dir_all(&path)?;
         }
 
+        let cache_size: usize = env::var("CACHE_SIZE").parse().unwrap_or(10_000);
+        let activecache = RefCell::new(LruCache::new(cache_size));
+
+        let cachelist = RefCell::new(VecDeque::new());
+
+        thread::spawn(|| {
+            let mut cl = cachelist.borrow_mut();
+
+            loop {}
+        });
+
         let column_families: HashSet<String> = match DB::list_cf(&opts, &path) {
             Ok(cfs) => cfs.into_iter().filter(|n| n != "default").collect(),
             // TODO: possibly platform-dependant error message check
@@ -193,6 +209,8 @@ impl Backend for Tiered {
             name,
             tikv,
             rt,
+            activecache,
+            cachelist,
         })
     }
 

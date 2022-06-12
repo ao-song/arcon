@@ -14,7 +14,7 @@ State management features for Arcon
 default = ["tiered"]
 rocks = ["rocksdb"]
 sled_checkpoints = ["sled"]
-tiered = ["rocksdb", "tikv-client", "tokio"]
+tiered = ["rocksdb", "tikv-client", "tokio", "lru"]
 
 [dependencies]
 prost = "0.7"
@@ -34,6 +34,11 @@ optional = true
 [dependencies.tikv-client]
 default-features = false
 version = "0.1.0"
+optional = true
+
+[dependencies.lru]
+default-features = false
+version = "0.7.5"
 optional = true
 
 [dependencies.tokio]

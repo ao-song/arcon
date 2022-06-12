@@ -46,6 +46,30 @@ macro_rules! cfg_if_sled {
         unreachable!()
     };
 }
+
+#[doc(hidden)]
+#[cfg(feature = "tiered")]
+#[macro_export]
+macro_rules! cfg_if_tiered {
+    (@pat $i: pat) => {
+        $i
+    };
+    ($($body:tt)*) => {
+        $($body)*
+    };
+}
+
+#[doc(hidden)]
+#[cfg(not(feature = "tiered"))]
+#[macro_export]
+macro_rules! cfg_if_tiered {
+    (@pat $i: pat) => {
+        _
+    };
+    ($($body:tt)*) => {
+        unreachable!()
+    };
+}
 // endregion
 
 /// Runs `$body` with `$type_ident` bound to a concrete state backend type based on the runtime
@@ -80,6 +104,12 @@ macro_rules! with_backend_type {
             $crate::cfg_if_rocks!(@pat Rocks) => {
                 $crate::cfg_if_rocks! {
                     type $type_ident = $crate::backend::rocks::Rocks;
+                    $body
+                }
+            }
+            $crate::cfg_if_tiered!(@pat Tiered) => {
+                $crate::cfg_if_tiered! {
+                    type $type_ident = $crate::backend::tiered::Tiered;
                     $body
                 }
             }

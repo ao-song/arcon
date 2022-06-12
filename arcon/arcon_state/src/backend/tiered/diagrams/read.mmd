@@ -1,0 +1,21 @@
+sequenceDiagram
+    participant Application
+    participant Active Cache
+    participant Immutable Caches
+    participant Embedded Database
+    participant External Database
+    Application ->> Active Cache: Get Value
+    Active Cache -->> Application: Return Value
+    alt Failed to get value from Active Cache
+        Application ->> Immutable Caches: Get Value
+        Immutable Caches -->> Application: Return Value
+        alt Failed to get value from Immutable Caches
+            Application ->> Embedded Database: Get Value
+            Embedded Database -->> Application: Return Value
+            alt Failed to get value from Embedded Database
+                Application ->> External Database: Get Value
+                External Database -->> Application: Return Value
+            end
+        end
+    Application ->> Active Cache: Set Value
+    end
