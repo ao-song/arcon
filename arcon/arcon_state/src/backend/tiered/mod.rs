@@ -20,6 +20,7 @@ use std::{
     collections::{HashSet, VecDeque},
     env, fs,
     path::{Path, PathBuf},
+    sync::Arc,
     thread,
 };
 
@@ -72,9 +73,14 @@ impl Tiered {
         cf_name: impl AsRef<str>,
         key: impl AsRef<[u8]>,
     ) -> Result<Option<DBPinnableSlice>> {
-        let cf = self.get_cf_handle(cf_name)?;
-        // Ok(self.db().get_pinned_cf(cf, key)?)
-        Ok(self.db().get_pinned(key)?)
+        // let cf = self.get_cf_handle(cf_name)?;
+        // // Ok(self.db().get_pinned_cf(cf, key)?)
+        // Ok(self.db().get_pinned(key)?)
+        if let value = self.activecache.borrow().get(key) {
+            Ok(value)
+        } else {
+
+        }
     }
 
     #[inline]
@@ -179,12 +185,32 @@ impl Backend for Tiered {
         let cache_size: usize = env::var("CACHE_SIZE").parse().unwrap_or(10_000);
         let activecache = RefCell::new(LruCache::new(cache_size));
 
-        let cachelist = RefCell::new(VecDeque::new());
+        let cachelist = Arc::new(RefCell::new(VecDeque::new()));
 
-        thread::spawn(|| {
-            let mut cl = cachelist.borrow_mut();
+        let cl = cachelist.clone();
+        thread::spawn(move || {
+            let mut t_cl = cl.borrow_mut();
+            let t_db = DB::open(&opts, &path)?;
+            let t_rt = Runtime::new().unwrap();
+            let t_tikv = t_rt.block_on(RawClient::new(vec![addr])).unwrap();
 
-            loop {}
+            loop {
+                while !t_cl.is_empty() {
+                    if let f = t_cl.pop_front() {
+                        let mut batch = WriteBatch::default();
+                        for (t_k, t_v) in f.iter() {
+                            batch.put(t_k, t_v);
+                        }
+                        t_db.write(batch);
+
+                        let mut batch = vec![];
+                        for (t_k, t_v) in f.iter() {
+                            batch.push((t_k, t_v));
+                        }
+                        t_rt.block_on(async {t_tikv.batch_put(batch).await.unwrap()})
+                    }
+                }
+            }
         });
 
         let column_families: HashSet<String> = match DB::list_cf(&opts, &path) {
@@ -210,7 +236,7 @@ impl Backend for Tiered {
             tikv,
             rt,
             activecache,
-            cachelist,
+            cachelist.clone(),
         })
     }
 
