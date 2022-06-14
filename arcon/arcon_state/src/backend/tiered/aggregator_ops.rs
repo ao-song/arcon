@@ -1,6 +1,13 @@
 use crate::{
-    data::Metakey, error::*, rocks::default_write_opts, serialization::protobuf, Aggregator,
-    AggregatorOps, AggregatorState, Handle, Rocks,
+    data::Metakey,
+    error::*,
+    serialization::protobuf,
+    Aggregator,
+    AggregatorOps,
+    AggregatorState,
+    Handle,
+    Tiered,
+    // rocks::default_write_opts,
 };
 use rocksdb::{merge_operator::MergeFn, MergeOperands};
 
@@ -10,7 +17,7 @@ pub(crate) const VALUE_MARKER: u8 = 0x00;
 #[cfg(feature = "metrics")]
 use crate::metrics_utils::*;
 
-impl AggregatorOps for Rocks {
+impl AggregatorOps for Tiered {
     fn aggregator_clear<A: Aggregator, IK: Metakey, N: Metakey>(
         &self,
         handle: &Handle<AggregatorState<A>, IK, N>,
@@ -47,22 +54,23 @@ impl AggregatorOps for Rocks {
         handle: &Handle<AggregatorState<A>, IK, N>,
         value: <A as Aggregator>::Input,
     ) -> Result<()> {
-        let key = handle.serialize_metakeys()?;
-        let mut serialized = Vec::with_capacity(protobuf::size_hint(&value).unwrap_or(0) + 1);
-        serialized.push(VALUE_MARKER);
-        protobuf::serialize_into(&mut serialized, &value)?;
-        #[cfg(feature = "metrics")]
-        record_bytes_written(
-            handle.name(),
-            serialized.len() as u64,
-            self.name.clone().as_str(),
-        );
-        let cf = self.get_cf_handle(&handle.id)?;
-        // See the make_aggregating_merge function in this module. Its result is set as the
-        // merging operator for this state.
-        Ok(self
-            .db()
-            .merge_cf_opt(cf, key, serialized, &default_write_opts())?)
+        unimplemented!();
+        // let key = handle.serialize_metakeys()?;
+        // let mut serialized = Vec::with_capacity(protobuf::size_hint(&value).unwrap_or(0) + 1);
+        // serialized.push(VALUE_MARKER);
+        // protobuf::serialize_into(&mut serialized, &value)?;
+        // #[cfg(feature = "metrics")]
+        // record_bytes_written(
+        //     handle.name(),
+        //     serialized.len() as u64,
+        //     self.name.clone().as_str(),
+        // );
+        // let cf = self.get_cf_handle(&handle.id)?;
+        // // See the make_aggregating_merge function in this module. Its result is set as the
+        // // merging operator for this state.
+        // Ok(self
+        //     .db()
+        //     .merge_cf_opt(cf, key, serialized, &default_write_opts())?)
     }
 }
 

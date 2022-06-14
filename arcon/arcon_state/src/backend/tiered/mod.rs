@@ -17,17 +17,17 @@ use rocksdb::{
 };
 use std::{
     cell::UnsafeCell,
+    cell::RefCell,
     collections::{HashSet, VecDeque},
     env, fs,
     path::{Path, PathBuf},
     sync::Arc,
-    thread,
+    thread, borrow::Borrow, ops::Deref,
 };
 
 unsafe impl Send for Tiered {}
 unsafe impl Sync for Tiered {}
 
-#[derive(Debug)]
 pub struct Tiered {
     inner: UnsafeCell<DB>,
     restored: bool,
@@ -57,29 +57,41 @@ impl Tiered {
         unsafe { &(*self.inner.get()) }
     }
 
-    #[inline]
-    fn get_cf_handle(&self, cf_name: impl AsRef<str>) -> Result<&ColumnFamily> {
-        let cf_name = cf_name.as_ref();
-        self.db()
-            .cf_handle(cf_name)
-            .with_context(|| RocksMissingColumnFamily {
-                cf_name: cf_name.to_string(),
-            })
-    }
+    // #[inline]
+    // fn get_cf_handle(&self, cf_name: impl AsRef<str>) -> Result<&ColumnFamily> {
+    //     let cf_name = cf_name.as_ref();
+    //     self.db()
+    //         .cf_handle(cf_name)
+    //         .with_context(|| RocksMissingColumnFamily {
+    //             cf_name: cf_name.to_string(),
+    //         })
+    // }
 
     #[inline]
     fn get(
         &self,
         cf_name: impl AsRef<str>,
         key: impl AsRef<[u8]>,
-    ) -> Result<Option<DBPinnableSlice>> {
+    ) -> Result<Option<Vec<u8>>> {
         // let cf = self.get_cf_handle(cf_name)?;
         // // Ok(self.db().get_pinned_cf(cf, key)?)
         // Ok(self.db().get_pinned(key)?)
-        if let value = self.activecache.borrow().get(key) {
-            Ok(value)
+        if let Some(value) = self.activecache.borrow().get(key.as_ref()) {
+            Ok(Some(value.to_owned()))
         } else {
+            for cache in self.cachelist.borrow().iter() {
+                if let Some(value) = cache.get(key.as_ref()) {
+                    return Ok(Some(value.to_owned()))
+                }
+            }
 
+            if let Ok(Some(value)) = self.db().get_pinned(key) {
+                return Ok(Some(value.to_vec()))
+            }
+
+            Ok(self.rt.block_on(async {
+                self.tikv.get(key.as_ref().to_owned()).await.unwrap()
+            }))
         }
     }
 
@@ -90,25 +102,40 @@ impl Tiered {
         key: impl AsRef<[u8]>,
         value: impl AsRef<[u8]>,
     ) -> Result<()> {
-        let cf = self.get_cf_handle(cf_name)?;
-        // Ok(self
-        //     .db()
-        //     .put_cf_opt(cf, key, value, &default_write_opts())?)
-        Ok(self.db().put_opt(key, value, &default_write_opts())?)
+        // let cf = self.get_cf_handle(cf_name)?;
+        // // Ok(self
+        // //     .db()
+        // //     .put_cf_opt(cf, key, value, &default_write_opts())?)
+        // Ok(self.db().put_opt(key, value, &default_write_opts())?)
+        let mut cache = self.activecache.borrow_mut();
+        if cache.len() < cache.cap() {
+            cache.put(key.as_ref().to_owned(), value.as_ref().to_owned());
+            Ok(())
+        } else {
+            let mut list = self.cachelist.borrow_mut();
+            let cache = self.activecache.borrow();
+            list.push_back(*cache.deref());
+            let cache_size: usize = env::var("CACHE_SIZE").unwrap_or("10_000".to_string()).parse().unwrap_or(10_000);
+            let newcache = RefCell::new(LruCache::new(cache_size));
+            newcache.borrow_mut().put(key.as_ref().to_owned(), value.as_ref().to_owned());
+            self.activecache = newcache;
+            Ok(())
+        }
     }
 
     #[inline]
     fn remove(&self, cf: impl AsRef<str>, key: impl AsRef<[u8]>) -> Result<()> {
-        let cf = self.get_cf_handle(cf)?;
+        // let cf = self.get_cf_handle(cf)?;
         // Ok(self.db().delete_cf_opt(cf, key, &default_write_opts())?)
-        Ok(self.db().delete_opt(key, &default_write_opts())?)
+        self.db().delete_opt(key, &default_write_opts());
+        Ok(())
     }
 
     fn remove_prefix(&self, cf: impl AsRef<str>, prefix: impl AsRef<[u8]>) -> Result<()> {
         let prefix = prefix.as_ref();
         let cf_name = cf.as_ref();
 
-        let cf = self.get_cf_handle(cf_name)?;
+        // let cf = self.get_cf_handle(cf_name)?;
 
         // NOTE: this only works assuming the column family is lexicographically ordered (which is
         // the default, so we don't explicitly set it, see Options::set_comparator)
@@ -123,21 +150,21 @@ impl Tiered {
         // wb.delete_range_cf(cf, start, &end);
         wb.delete_range(start, &end);
 
-        self.db().write_opt(wb, &default_write_opts())?;
+        self.db().write_opt(wb, &default_write_opts());
 
         Ok(())
     }
 
     #[inline]
     fn contains(&self, cf: impl AsRef<str>, key: impl AsRef<[u8]>) -> Result<bool> {
-        let cf = self.get_cf_handle(cf.as_ref())?;
+        // let cf = self.get_cf_handle(cf.as_ref())?;
         // Ok(self.db().get_pinned_cf(cf, key)?.is_some())
-        Ok(self.db().get_pinned(cf, key)?.is_some())
+        Ok(self.db().get_pinned(key).unwrap_or_default().is_some())
     }
 
     fn create_column_family(&self, cf_name: &str, opts: Options) -> Result<()> {
         if self.db().cf_handle(cf_name).is_none() {
-            self.db_mut().create_cf(cf_name, &opts)?;
+            self.db_mut().create_cf(cf_name, &opts);
         }
         Ok(())
     }
@@ -171,7 +198,7 @@ impl Backend for Tiered {
         // tikv operations
         let rt = Runtime::new().unwrap();
 
-        let addr = env::var("TIKV_ADDR").unwrap_or("127.0.0.1");
+        let addr = env::var("TIKV_ADDR").unwrap_or("127.0.0.1:2379".to_string());
         let tikv = rt.block_on(RawClient::new(vec![addr])).unwrap();
 
         let mut opts = Options::default();
@@ -182,7 +209,7 @@ impl Backend for Tiered {
             fs::create_dir_all(&path)?;
         }
 
-        let cache_size: usize = env::var("CACHE_SIZE").parse().unwrap_or(10_000);
+        let cache_size: usize = env::var("CACHE_SIZE").unwrap_or("10_000".to_string()).parse().unwrap_or(10_000);
         let activecache = RefCell::new(LruCache::new(cache_size));
 
         let cachelist = Arc::new(RefCell::new(VecDeque::new()));
@@ -198,7 +225,7 @@ impl Backend for Tiered {
                 while !t_cl.is_empty() {
                     if let f = t_cl.pop_front() {
                         let mut batch = WriteBatch::default();
-                        for (t_k, t_v) in f.iter() {
+                        for (t_k, t_v) in f.clone().iter() {
                             batch.put(t_k, t_v);
                         }
                         t_db.write(batch);
@@ -213,21 +240,21 @@ impl Backend for Tiered {
             }
         });
 
-        let column_families: HashSet<String> = match DB::list_cf(&opts, &path) {
-            Ok(cfs) => cfs.into_iter().filter(|n| n != "default").collect(),
-            // TODO: possibly platform-dependant error message check
-            Err(e) if e.to_string().contains("No such file or directory") => HashSet::new(),
-            Err(e) => return Err(e.into()),
-        };
+        // let column_families: HashSet<String> = match DB::list_cf(&opts, &path) {
+        //     Ok(cfs) => cfs.into_iter().filter(|n| n != "default").collect(),
+        //     // TODO: possibly platform-dependant error message check
+        //     Err(e) if e.to_string().contains("No such file or directory") => HashSet::new(),
+        //     Err(e) => return Err(e.into()),
+        // };
 
-        let cfds = if !column_families.is_empty() {
-            column_families
-                .into_iter()
-                .map(|name| ColumnFamilyDescriptor::new(name, Options::default()))
-                .collect()
-        } else {
-            vec![ColumnFamilyDescriptor::new("default", Options::default())]
-        };
+        // let cfds = if !column_families.is_empty() {
+        //     column_families
+        //         .into_iter()
+        //         .map(|name| ColumnFamilyDescriptor::new(name, Options::default()))
+        //         .collect()
+        // } else {
+        //     vec![ColumnFamilyDescriptor::new("default", Options::default())]
+        // };
         Ok(Tiered {
             // inner: UnsafeCell::new(DB::open_cf_descriptors(&opts, &path, cfds)?),
             inner: UnsafeCell::new(DB::open(&opts, &path)?),
@@ -284,9 +311,9 @@ impl Backend for Tiered {
 
     fn checkpoint(&self, checkpoint_path: &Path) -> Result<()> {
         let db = self.db();
-        db.flush()?;
+        db.flush();
 
-        let checkpointer = Checkpoint::new(db)?;
+        let checkpointer = Checkpoint::new(db);
 
         if checkpoint_path.exists() {
             // TODO: add a warning log here
@@ -294,7 +321,7 @@ impl Backend for Tiered {
             fs::remove_dir_all(checkpoint_path)?
         }
 
-        checkpointer.create_checkpoint(checkpoint_path)?;
+        checkpointer.create_checkpoint(checkpoint_path);
         Ok(())
     }
 
@@ -369,7 +396,6 @@ pub mod tests {
     };
     use tempfile::TempDir;
 
-    #[derive(Debug)]
     pub struct TestDb {
         tiered: Arc<Tiered>,
         dir: TempDir,

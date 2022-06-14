@@ -2,9 +2,12 @@ use crate::{
     data::{Metakey, Value},
     error::*,
     handles::BoxedIteratorOfResult,
-    rocks::default_write_opts,
+    // rocks::default_write_opts,
     serialization::{fixed_bytes, fixed_bytes::FixedBytes, protobuf},
-    Handle, Rocks, VecOps, VecState,
+    Handle,
+    Tiered,
+    VecOps,
+    VecState,
 };
 use rocksdb::MergeOperands;
 use std::{iter, mem};
@@ -12,7 +15,7 @@ use std::{iter, mem};
 #[cfg(feature = "metrics")]
 use crate::metrics_utils::*;
 
-impl VecOps for Rocks {
+impl VecOps for Tiered {
     fn vec_clear<T: Value, IK: Metakey, N: Metakey>(
         &self,
         handle: &Handle<VecState<T>, IK, N>,
@@ -27,23 +30,24 @@ impl VecOps for Rocks {
         handle: &Handle<VecState<T>, IK, N>,
         value: T,
     ) -> Result<()> {
-        let key = handle.serialize_metakeys()?;
+        unimplemented!();
+        // let key = handle.serialize_metakeys()?;
 
-        let mut serialized = Vec::with_capacity(
-            <usize as FixedBytes>::SIZE + protobuf::size_hint(&value).unwrap_or(0),
-        );
+        // let mut serialized = Vec::with_capacity(
+        //     <usize as FixedBytes>::SIZE + protobuf::size_hint(&value).unwrap_or(0),
+        // );
 
-        fixed_bytes::serialize_into(&mut serialized, &1usize)?;
-        protobuf::serialize_into(&mut serialized, &value)?;
-        #[cfg(feature = "metrics")]
-        record_bytes_written(handle.name(), serialized.len() as u64, self.name.as_str());
+        // fixed_bytes::serialize_into(&mut serialized, &1usize)?;
+        // protobuf::serialize_into(&mut serialized, &value)?;
+        // #[cfg(feature = "metrics")]
+        // record_bytes_written(handle.name(), serialized.len() as u64, self.name.as_str());
 
-        let cf = self.get_cf_handle(&handle.id)?;
-        // See the vec_merge function in this module. It is set as the merge operator for every
-        // vec state.
-        Ok(self
-            .db()
-            .merge_cf_opt(cf, key, serialized, &default_write_opts())?)
+        // let cf = self.get_cf_handle(&handle.id)?;
+        // // See the vec_merge function in this module. It is set as the merge operator for every
+        // // vec state.
+        // Ok(self
+        //     .db()
+        //     .merge_cf_opt(cf, key, serialized, &default_write_opts())?)
     }
 
     fn vec_get<T: Value, IK: Metakey, N: Metakey>(
@@ -134,33 +138,34 @@ impl VecOps for Rocks {
         handle: &Handle<VecState<T>, IK, N>,
         values: impl IntoIterator<Item = T>,
     ) -> Result<()> {
-        let key = handle.serialize_metakeys()?;
+        unimplemented!();
+        // let key = handle.serialize_metakeys()?;
 
-        // figuring out the correct capacity would require iterating through `values`, but we
-        // cannot really consume the `values` iterator twice, so just preallocate a bunch of bytes
-        let mut serialized = Vec::with_capacity(256);
+        // // figuring out the correct capacity would require iterating through `values`, but we
+        // // cannot really consume the `values` iterator twice, so just preallocate a bunch of bytes
+        // let mut serialized = Vec::with_capacity(256);
 
-        // reserve space for the length
-        fixed_bytes::serialize_into(&mut serialized, &0usize)?;
-        let mut len = 0usize;
+        // // reserve space for the length
+        // fixed_bytes::serialize_into(&mut serialized, &0usize)?;
+        // let mut len = 0usize;
 
-        for elem in values {
-            len += 1;
-            protobuf::serialize_into(&mut serialized, &elem)?;
-        }
+        // for elem in values {
+        //     len += 1;
+        //     protobuf::serialize_into(&mut serialized, &elem)?;
+        // }
 
-        // fill in the length
-        // BufMut impl for mutable slices starts at the beginning and shifts the slice, whereas the
-        // impl for Vec starts at the end and extends it, so we want the first one
-        fixed_bytes::serialize_into(&mut serialized.as_mut_slice(), &len)?;
+        // // fill in the length
+        // // BufMut impl for mutable slices starts at the beginning and shifts the slice, whereas the
+        // // impl for Vec starts at the end and extends it, so we want the first one
+        // fixed_bytes::serialize_into(&mut serialized.as_mut_slice(), &len)?;
 
-        let cf = self.get_cf_handle(&handle.id)?;
-        #[cfg(feature = "metrics")]
-        record_bytes_written(handle.name(), serialized.len() as u64, self.name.as_str());
-        self.db()
-            .merge_cf_opt(cf, key, serialized, &default_write_opts())?;
+        // let cf = self.get_cf_handle(&handle.id)?;
+        // #[cfg(feature = "metrics")]
+        // record_bytes_written(handle.name(), serialized.len() as u64, self.name.as_str());
+        // self.db()
+        //     .merge_cf_opt(cf, key, serialized, &default_write_opts())?;
 
-        Ok(())
+        // Ok(())
     }
 
     fn vec_len<T: Value, IK: Metakey, N: Metakey>(

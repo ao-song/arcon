@@ -3,14 +3,18 @@ use crate::metrics_utils::*;
 use crate::{
     data::{Metakey, Value},
     error::*,
-    rocks::default_write_opts,
+    // rocks::default_write_opts,
     serialization::protobuf,
-    Handle, Reducer, ReducerOps, ReducerState, Rocks,
+    Handle,
+    Reducer,
+    ReducerOps,
+    ReducerState,
+    Tiered,
 };
 
 use rocksdb::{merge_operator::MergeFn, MergeOperands};
 
-impl ReducerOps for Rocks {
+impl ReducerOps for Tiered {
     fn reducer_clear<T: Value, F: Reducer<T>, IK: Metakey, N: Metakey>(
         &self,
         handle: &Handle<ReducerState<T, F>, IK, N>,
@@ -40,17 +44,18 @@ impl ReducerOps for Rocks {
         handle: &Handle<ReducerState<T, F>, IK, N>,
         value: T,
     ) -> Result<()> {
-        let key = handle.serialize_metakeys()?;
-        let serialized = protobuf::serialize(&value)?;
+        unimplemented!();
+        // let key = handle.serialize_metakeys()?;
+        // let serialized = protobuf::serialize(&value)?;
 
-        let cf = self.get_cf_handle(&handle.id)?;
-        // See the make_reducer_merge function in this module. Its result is set as the merging
-        // operator for this state.
-        #[cfg(feature = "metrics")]
-        record_bytes_written(handle.name(), serialized.len() as u64, self.name.as_str());
-        Ok(self
-            .db()
-            .merge_cf_opt(cf, key, serialized, &default_write_opts())?)
+        // let cf = self.get_cf_handle(&handle.id)?;
+        // // See the make_reducer_merge function in this module. Its result is set as the merging
+        // // operator for this state.
+        // #[cfg(feature = "metrics")]
+        // record_bytes_written(handle.name(), serialized.len() as u64, self.name.as_str());
+        // Ok(self
+        //     .db()
+        //     .merge_cf_opt(cf, key, serialized, &default_write_opts())?)
     }
 }
 

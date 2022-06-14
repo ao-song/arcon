@@ -2,13 +2,13 @@ use crate::{
     data::{Metakey, Value},
     error::*,
     serialization::protobuf,
-    Handle, Rocks, ValueOps, ValueState,
+    Handle, Tiered, ValueOps, ValueState,
 };
 
 #[cfg(feature = "metrics")]
 use crate::metrics_utils::*;
 
-impl ValueOps for Rocks {
+impl ValueOps for Tiered {
     fn value_clear<T: Value, IK: Metakey, N: Metakey>(
         &self,
         handle: &Handle<ValueState<T>, IK, N>,

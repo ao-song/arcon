@@ -254,12 +254,20 @@ pub mod sled;
 #[cfg(feature = "sled")]
 pub use self::sled::Sled;
 
+#[cfg(feature = "tiered")]
+pub mod tiered;
+
+#[cfg(feature = "tiered")]
+pub use self::tiered::Tiered;
+
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 pub enum BackendType {
     #[cfg(feature = "rocks")]
     Rocks,
     #[cfg(feature = "sled")]
     Sled,
+    #[cfg(feature = "tiered")]
+    Tiered,
 }
 
 impl fmt::Display for BackendType {
@@ -276,6 +284,8 @@ impl BackendType {
             Rocks,
             #[cfg(feature = "sled")]
             Sled,
+            #[cfg(feature = "tiered")]
+            Tiered,
         ]
     };
 
@@ -285,6 +295,8 @@ impl BackendType {
             "Rocks",
             #[cfg(feature = "sled")]
             "Sled",
+            #[cfg(feature = "tiered")]
+            Tiered,
         ]
     };
 }
@@ -300,6 +312,8 @@ impl FromStr for BackendType {
             x if x.eq_ignore_ascii_case("Rocks") => Ok(Rocks),
             #[cfg(feature = "sled")]
             x if x.eq_ignore_ascii_case("Sled") => Ok(Sled),
+            #[cfg(feature = "tiered")]
+            x if x.eq_ignore_ascii_case("tiered") => Ok(Tiered),
             _ => Err(format!(
                 "valid values: {}",
                 BackendType::VARIANTS
@@ -314,6 +328,6 @@ impl FromStr for BackendType {
 
 impl Default for BackendType {
     fn default() -> Self {
-        BackendType::Sled
+        BackendType::Tiered
     }
 }
