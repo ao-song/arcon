@@ -290,13 +290,14 @@ impl BackendType {
     };
 
     pub const STR_VARIANTS: &'static [&'static str] = {
+        use BackendType::*;
         &[
             #[cfg(feature = "rocks")]
             "Rocks",
             #[cfg(feature = "sled")]
             "Sled",
             #[cfg(feature = "tiered")]
-            Tiered,
+            "Tiered",
         ]
     };
 }
