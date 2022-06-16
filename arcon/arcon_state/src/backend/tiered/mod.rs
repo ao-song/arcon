@@ -16,13 +16,14 @@ use rocksdb::{
     SliceTransform, WriteBatch, WriteOptions, DB,
 };
 use std::{
-    borrow::Borrow,
+    borrow::{Borrow, BorrowMut},
     cell::RefCell,
     cell::UnsafeCell,
     collections::{HashSet, VecDeque},
     env, fs,
     ops::Deref,
     path::{Path, PathBuf},
+    ptr,
     sync::Arc,
     thread,
 };
@@ -37,7 +38,7 @@ pub struct Tiered {
     tikv: RawClient,
     rt: Runtime,
     activecache: RefCell<LruCache<Vec<u8>, Vec<u8>>>,
-    cachelist: RefCell<VecDeque<LruCache<Vec<u8>, Vec<u8>>>>,
+    cachelist: *const VecDeque<LruCache<Vec<u8>, Vec<u8>>>,
 }
 
 // we use epochs, so WAL is useless for us
@@ -74,22 +75,24 @@ impl Tiered {
         // let cf = self.get_cf_handle(cf_name)?;
         // // Ok(self.db().get_pinned_cf(cf, key)?)
         // Ok(self.db().get_pinned(key)?)
-        if let Some(value) = self.activecache.borrow().get(key.as_ref()) {
-            Ok(Some(value.to_owned()))
-        } else {
-            for cache in self.cachelist.borrow().iter() {
-                if let Some(value) = cache.get(key.as_ref()) {
-                    return Ok(Some(value.to_owned()));
+        unsafe {
+            if let Some(value) = self.activecache.borrow_mut().get(key.as_ref()) {
+                Ok(Some(value.to_owned()))
+            } else {
+                for cache in self.cachelist.read().iter_mut() {
+                    if let Some(value) = cache.get(key.as_ref()) {
+                        return Ok(Some(value.to_owned()));
+                    }
                 }
-            }
 
-            if let Ok(Some(value)) = self.db().get_pinned(key) {
-                return Ok(Some(value.to_vec()));
-            }
+                if let Ok(Some(value)) = self.db().get_pinned(key.as_ref().clone()) {
+                    return Ok(Some(value.to_vec()));
+                }
 
-            Ok(self
-                .rt
-                .block_on(async { self.tikv.get(key.as_ref().to_owned()).await.unwrap() }))
+                Ok(self
+                    .rt
+                    .block_on(async { self.tikv.get(key.as_ref().to_owned()).await.unwrap() }))
+            }
         }
     }
 
@@ -105,24 +108,33 @@ impl Tiered {
         // //     .db()
         // //     .put_cf_opt(cf, key, value, &default_write_opts())?)
         // Ok(self.db().put_opt(key, value, &default_write_opts())?)
-        let mut cache = self.activecache.borrow_mut();
-        if cache.len() < cache.cap() {
-            cache.put(key.as_ref().to_owned(), value.as_ref().to_owned());
-            Ok(())
-        } else {
-            let mut list = self.cachelist.borrow_mut();
-            let cache = self.activecache.borrow();
-            list.push_back(*cache.deref());
-            let cache_size: usize = env::var("CACHE_SIZE")
-                .unwrap_or("10_000".to_string())
-                .parse()
-                .unwrap_or(10_000);
-            let newcache = RefCell::new(LruCache::new(cache_size));
-            newcache
-                .borrow_mut()
-                .put(key.as_ref().to_owned(), value.as_ref().to_owned());
-            self.activecache = newcache;
-            Ok(())
+        unsafe {
+            let mut cache = self.activecache.borrow_mut();
+            if cache.len() < cache.cap() {
+                cache.put(key.as_ref().to_owned(), value.as_ref().to_owned());
+                Ok(())
+            } else {
+                let list = self.cachelist as *mut VecDeque<LruCache<Vec<u8>, Vec<u8>>>;
+                let list = list.as_mut().unwrap();
+                let cacheptr = self.activecache.as_ptr();
+
+                let cache_size: usize = env::var("CACHE_SIZE")
+                    .unwrap_or("10_000".to_string())
+                    .parse()
+                    .unwrap_or(10_000);
+
+                let mut newcache: LruCache<Vec<u8>, Vec<u8>> = LruCache::new(cache_size);
+                for (kk, vv) in cacheptr.read().iter() {
+                    newcache.put(kk.to_owned(), vv.to_owned());
+                }
+                // let newcacheptr = RefCell::new(newcache).as_ptr();
+                // ptr::copy_nonoverlapping(cacheptr, newcacheptr, cache.len());
+
+                list.push_back(newcache);
+
+                self.activecache.borrow_mut().clear();
+                Ok(())
+            }
         }
     }
 
@@ -207,6 +219,8 @@ impl Backend for Tiered {
         let mut opts = Options::default();
         opts.create_if_missing(true);
 
+        let savedpath = path.clone();
+
         let path: PathBuf = path.into();
         if !path.exists() {
             fs::create_dir_all(&path)?;
@@ -218,13 +232,13 @@ impl Backend for Tiered {
             .unwrap_or(10_000);
         let activecache = RefCell::new(LruCache::new(cache_size));
 
-        let cachelist: Arc<RefCell<VecDeque<LruCache<Vec<u8>, Vec<u8>>>>> =
-            Arc::new(RefCell::new(VecDeque::new()));
+        let cachelist: Arc<VecDeque<LruCache<Vec<u8>, Vec<u8>>>> = Arc::new(VecDeque::new());
 
         let mut cl = Arc::clone(&cachelist);
         unsafe {
             thread::spawn(move || {
-                let mut t_cl = *cl;
+                let addr = env::var("TIKV_ADDR").unwrap_or("127.0.0.1:2379".to_string());
+                let mut t_cl = Arc::as_ptr(&cl).read();
                 if let Ok(dbdb) = DB::open(&opts, &path) {
                     let t_db = dbdb;
                     let t_rt = Runtime::new().unwrap();
@@ -236,8 +250,10 @@ impl Backend for Tiered {
                                 let mut batch = WriteBatch::default();
                                 let mut vec_batch = vec![];
                                 for (t_k, t_v) in f.iter() {
+                                    // let tkptr = t_k.as_ptr();
+                                    // let tvptr = t_v.as_ptr();
                                     batch.put(t_k, t_v);
-                                    vec_batch.push((*t_k, *t_v));
+                                    vec_batch.push((t_k.to_owned(), t_v.to_owned()));
                                 }
                                 t_db.write(batch);
                                 t_rt.block_on(async { t_tikv.batch_put(vec_batch).await.unwrap() })
@@ -263,6 +279,14 @@ impl Backend for Tiered {
         // } else {
         //     vec![ColumnFamilyDescriptor::new("default", Options::default())]
         // };
+        let mut cl = Arc::clone(&cachelist);
+        let mut opts = Options::default();
+        opts.create_if_missing(true);
+
+        let path: PathBuf = savedpath.into();
+        if !path.exists() {
+            fs::create_dir_all(&path)?;
+        }
         Ok(Tiered {
             // inner: UnsafeCell::new(DB::open_cf_descriptors(&opts, &path, cfds)?),
             inner: UnsafeCell::new(DB::open(&opts, &path).unwrap()),
@@ -271,7 +295,7 @@ impl Backend for Tiered {
             tikv,
             rt,
             activecache,
-            cachelist: *cachelist.clone().deref(),
+            cachelist: Arc::into_raw(cl),
         })
     }
 
