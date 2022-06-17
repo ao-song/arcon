@@ -24,7 +24,7 @@ use std::{
     ops::Deref,
     path::{Path, PathBuf},
     ptr,
-    sync::Arc,
+    sync::{Arc, Mutex},
     thread,
 };
 
@@ -35,10 +35,10 @@ pub struct Tiered {
     inner: UnsafeCell<DB>,
     restored: bool,
     name: String,
-    tikv: RawClient,
-    rt: Runtime,
-    activecache: RefCell<LruCache<Vec<u8>, Vec<u8>>>,
-    cachelist: *const VecDeque<LruCache<Vec<u8>, Vec<u8>>>,
+    pub tikv: RawClient,
+    pub rt: Runtime,
+    pub activecache: RefCell<LruCache<Vec<u8>, Vec<u8>>>,
+    cachelist: Arc<Mutex<VecDeque<LruCache<Vec<u8>, Vec<u8>>>>>,
 }
 
 // we use epochs, so WAL is useless for us
@@ -71,21 +71,26 @@ impl Tiered {
     // }
 
     #[inline]
-    fn get(&self, cf_name: impl AsRef<str>, key: impl AsRef<[u8]>) -> Result<Option<Vec<u8>>> {
+    pub fn get(&self, cf_name: impl AsRef<str>, key: impl AsRef<[u8]>) -> Result<Option<Vec<u8>>> {
         // let cf = self.get_cf_handle(cf_name)?;
         // // Ok(self.db().get_pinned_cf(cf, key)?)
         // Ok(self.db().get_pinned(key)?)
         unsafe {
+            println!("aaaaaaaaaaaaaaa");
             if let Some(value) = self.activecache.borrow_mut().get(key.as_ref()) {
+                println!("bbbbbbbbbbbbbb");
                 Ok(Some(value.to_owned()))
             } else {
-                for cache in self.cachelist.read().iter_mut() {
+                println!("ccccccccccccccccc");
+                for cache in self.cachelist.lock().unwrap().iter_mut() {
                     if let Some(value) = cache.get(key.as_ref()) {
+                        println!("dddddddddddddddddd");
                         return Ok(Some(value.to_owned()));
                     }
                 }
 
                 if let Ok(Some(value)) = self.db().get_pinned(key.as_ref().clone()) {
+                    println!("eeeeeeeeeeeeeeeeeee");
                     return Ok(Some(value.to_vec()));
                 }
 
@@ -97,7 +102,7 @@ impl Tiered {
     }
 
     #[inline]
-    fn put(
+    pub fn put(
         &self,
         cf_name: impl AsRef<str>,
         key: impl AsRef<[u8]>,
@@ -114,8 +119,7 @@ impl Tiered {
                 cache.put(key.as_ref().to_owned(), value.as_ref().to_owned());
                 Ok(())
             } else {
-                let list = self.cachelist as *mut VecDeque<LruCache<Vec<u8>, Vec<u8>>>;
-                let list = list.as_mut().unwrap();
+                let mut list = self.cachelist.lock().unwrap();
                 let cacheptr = self.activecache.as_ptr();
 
                 let cache_size: usize = env::var("CACHE_SIZE")
@@ -232,20 +236,23 @@ impl Backend for Tiered {
             .unwrap_or(10_000);
         let activecache = RefCell::new(LruCache::new(cache_size));
 
-        let cachelist: Arc<VecDeque<LruCache<Vec<u8>, Vec<u8>>>> = Arc::new(VecDeque::new());
+        let cachelist: Arc<Mutex<VecDeque<LruCache<Vec<u8>, Vec<u8>>>>> =
+            Arc::new(Mutex::new(VecDeque::new()));
 
         let mut cl = Arc::clone(&cachelist);
         unsafe {
             thread::spawn(move || {
                 let addr = env::var("TIKV_ADDR").unwrap_or("127.0.0.1:2379".to_string());
-                let mut t_cl = Arc::as_ptr(&cl).read();
                 if let Ok(dbdb) = DB::open(&opts, &path) {
                     let t_db = dbdb;
                     let t_rt = Runtime::new().unwrap();
                     let t_tikv = t_rt.block_on(RawClient::new(vec![addr])).unwrap();
 
                     loop {
+                        let mut cl = cl.lock().unwrap();
+                        let mut t_cl = cl;
                         while !t_cl.is_empty() {
+                            println!("DEBUG: start to dump data to db!");
                             if let Some(f) = t_cl.pop_front() {
                                 let mut batch = WriteBatch::default();
                                 let mut vec_batch = vec![];
@@ -295,7 +302,7 @@ impl Backend for Tiered {
             tikv,
             rt,
             activecache,
-            cachelist: Arc::into_raw(cl),
+            cachelist: cl,
         })
     }
 
