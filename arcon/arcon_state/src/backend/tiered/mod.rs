@@ -51,7 +51,7 @@ fn default_write_opts() -> WriteOptions {
 impl Tiered {
     #[inline(always)]
     #[allow(clippy::mut_from_ref)]
-    fn db_mut(&self) -> &mut DB {
+    pub fn db_mut(&self) -> &mut DB {
         unsafe { &mut (*self.inner.get()) }
     }
 
@@ -75,29 +75,23 @@ impl Tiered {
         // let cf = self.get_cf_handle(cf_name)?;
         // // Ok(self.db().get_pinned_cf(cf, key)?)
         // Ok(self.db().get_pinned(key)?)
-        unsafe {
-            println!("aaaaaaaaaaaaaaa");
-            if let Some(value) = self.activecache.borrow_mut().get(key.as_ref()) {
-                println!("bbbbbbbbbbbbbb");
-                Ok(Some(value.to_owned()))
-            } else {
-                println!("ccccccccccccccccc");
-                for cache in self.cachelist.lock().unwrap().iter_mut() {
-                    if let Some(value) = cache.get(key.as_ref()) {
-                        println!("dddddddddddddddddd");
-                        return Ok(Some(value.to_owned()));
-                    }
-                }
 
-                if let Ok(Some(value)) = self.db().get_pinned(key.as_ref().clone()) {
-                    println!("eeeeeeeeeeeeeeeeeee");
-                    return Ok(Some(value.to_vec()));
+        if let Some(value) = self.activecache.borrow_mut().get(key.as_ref()) {
+            Ok(Some(value.to_owned()))
+        } else {
+            for cache in self.cachelist.lock().unwrap().iter_mut() {
+                if let Some(value) = cache.get(key.as_ref()) {
+                    return Ok(Some(value.to_owned()));
                 }
-
-                Ok(self
-                    .rt
-                    .block_on(async { self.tikv.get(key.as_ref().to_owned()).await.unwrap() }))
             }
+
+            if let Ok(Some(value)) = self.db().get_pinned(key.as_ref().clone()) {
+                return Ok(Some(value.to_vec()));
+            }
+
+            Ok(self
+                .rt
+                .block_on(async { self.tikv.get(key.as_ref().to_owned()).await.unwrap() }))
         }
     }
 
@@ -113,32 +107,30 @@ impl Tiered {
         // //     .db()
         // //     .put_cf_opt(cf, key, value, &default_write_opts())?)
         // Ok(self.db().put_opt(key, value, &default_write_opts())?)
-        unsafe {
-            let mut cache = self.activecache.borrow_mut();
-            if cache.len() < cache.cap() {
-                cache.put(key.as_ref().to_owned(), value.as_ref().to_owned());
-                Ok(())
-            } else {
-                let mut list = self.cachelist.lock().unwrap();
-                let cacheptr = self.activecache.as_ptr();
 
-                let cache_size: usize = env::var("CACHE_SIZE")
-                    .unwrap_or("10_000".to_string())
-                    .parse()
-                    .unwrap_or(10_000);
+        let mut cache = self.activecache.borrow_mut();
+        if cache.len() < cache.cap() {
+            cache.put(key.as_ref().to_owned(), value.as_ref().to_owned());
+            Ok(())
+        } else {
+            println!("Active cache is full, append to immutable cache list!");
+            let mut list = self.cachelist.lock().unwrap();
 
-                let mut newcache: LruCache<Vec<u8>, Vec<u8>> = LruCache::new(cache_size);
-                for (kk, vv) in cacheptr.read().iter() {
-                    newcache.put(kk.to_owned(), vv.to_owned());
-                }
-                // let newcacheptr = RefCell::new(newcache).as_ptr();
-                // ptr::copy_nonoverlapping(cacheptr, newcacheptr, cache.len());
+            let cache_size: usize = env::var("CACHE_SIZE")
+                .unwrap_or("10_000".to_string())
+                .parse()
+                .unwrap_or(10_000);
 
-                list.push_back(newcache);
-
-                self.activecache.borrow_mut().clear();
-                Ok(())
+            let mut newcache: LruCache<Vec<u8>, Vec<u8>> = LruCache::new(cache_size);
+            for (kk, vv) in cache.iter() {
+                newcache.put(kk.to_owned(), vv.to_owned());
             }
+
+            list.push_back(newcache);
+
+            cache.clear();
+            cache.put(key.as_ref().to_owned(), value.as_ref().to_owned());
+            Ok(())
         }
     }
 
