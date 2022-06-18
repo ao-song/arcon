@@ -94,20 +94,20 @@ fn main() {
     //     }
     // }
 
-    // println!("Testing basic get..");
+    println!("Testing basic get..");
 
-    // let key = make_key(100, key_size);
-    // println!("{:?}", key);
-    // println!("{:?}", tiered.get("test".to_string(), key.clone()));
-    // println!("{:?}", tiered.activecache.borrow_mut().get(&key));
+    let key = make_key(100, key_size);
+    println!("{:?}", key);
+    println!("{:?}", tiered.get("test".to_string(), key.clone()));
+    println!("{:?}", tiered.activecache.borrow_mut().get(&key));
 
-    // println!("Testing basic put..");
-    // let key = make_key(100, key_size);
-    // let value = make_value(value_size, &rng);
-    // println!("Key is {:?}", key);
-    // println!("Value is {:?}", value);
-    // tiered.put("test".to_string(), key.clone(), value);
-    // println!("{:?}", tiered.activecache.borrow_mut().get(&key));
+    println!("Testing basic put..");
+    let key = make_key(100, key_size);
+    let value = make_value(value_size, &rng);
+    println!("Key is {:?}", key);
+    println!("Value is {:?}", value);
+    tiered.put("test".to_string(), key.clone(), value);
+    println!("{:?}", tiered.activecache.borrow_mut().get(&key));
 
     println!("Testing massive read/write..");
     let mut c = 0;
@@ -115,8 +115,8 @@ fn main() {
         let key = make_key(i, key_size);
         let value = make_value(value_size, &rng);
         tiered.put("test".to_string(), key.clone(), value.clone());
-        c += 1;
-        println!("{}", c);
+        // c += 1;
+        // println!("{}", c);
 
         if let Ok(ret) = tiered.get("test".to_string(), key.clone()) {
             let mut ac = tiered.activecache.borrow_mut();
@@ -127,7 +127,10 @@ fn main() {
         }
     }
 
+    thread::sleep(time::Duration::from_millis(5000));
+
     // tikv, rocksdb equal
+    println!("Testing tikv, rocksdb equal");
     for i in 0..entry_num {
         let key = make_key(i, key_size);
 
@@ -135,12 +138,17 @@ fn main() {
             .rt
             .block_on(async { tiered.tikv.get(key.clone().to_owned()).await.unwrap() })
         {
-            let mut ac = tiered.db_mut();
+            println!("rettttt is {:?}", ret);
+            let ac = tiered.db_mut();
             if let Ok(cret) = ac.get_pinned(&key) {
-                if *(cret.unwrap().to_vec()) != ret.clone() {
+                let cretunwrap = cret.unwrap();
+                println!("Get value from rocks as well {:?}!", cretunwrap.to_vec());
+                if *(cretunwrap.to_vec()) != ret.clone() {
                     println!("ret is {:?}", ret);
                 }
             }
         }
     }
 }
+
+// cargo run --example eval

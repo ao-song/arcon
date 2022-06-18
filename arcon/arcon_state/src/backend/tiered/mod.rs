@@ -12,15 +12,15 @@ use tokio::runtime::Runtime;
 use lru::LruCache;
 
 use rocksdb::{
-    checkpoint::Checkpoint, ColumnFamily, ColumnFamilyDescriptor, DBPinnableSlice, Options,
-    SliceTransform, WriteBatch, WriteOptions, DB,
+    checkpoint::Checkpoint, ColumnFamily, ColumnFamilyDescriptor, DBPinnableSlice,
+    DBWithThreadMode, MultiThreaded, Options, SliceTransform, WriteBatch, WriteOptions,
 };
 use std::{
     borrow::{Borrow, BorrowMut},
     cell::RefCell,
     cell::UnsafeCell,
     collections::{HashSet, VecDeque},
-    env, fs,
+    env, fs, io, mem,
     ops::Deref,
     path::{Path, PathBuf},
     ptr,
@@ -31,8 +31,10 @@ use std::{
 unsafe impl Send for Tiered {}
 unsafe impl Sync for Tiered {}
 
+type DB = DBWithThreadMode<MultiThreaded>;
+
 pub struct Tiered {
-    inner: UnsafeCell<DB>,
+    inner: UnsafeCell<Arc<DB>>,
     restored: bool,
     name: String,
     pub tikv: RawClient,
@@ -51,8 +53,8 @@ fn default_write_opts() -> WriteOptions {
 impl Tiered {
     #[inline(always)]
     #[allow(clippy::mut_from_ref)]
-    pub fn db_mut(&self) -> &mut DB {
-        unsafe { &mut (*self.inner.get()) }
+    pub fn db_mut(&self) -> &mut Arc<DB> {
+        unsafe { &mut *(*self.inner.get().borrow_mut()) }
     }
 
     #[inline(always)]
@@ -113,8 +115,12 @@ impl Tiered {
             cache.put(key.as_ref().to_owned(), value.as_ref().to_owned());
             Ok(())
         } else {
-            println!("Active cache is full, append to immutable cache list!");
             let mut list = self.cachelist.lock().unwrap();
+
+            println!(
+                "Active cache is full, append to immutable cache list! List len is {}",
+                list.len()
+            );
 
             let cache_size: usize = env::var("CACHE_SIZE")
                 .unwrap_or("10_000".to_string())
@@ -127,6 +133,8 @@ impl Tiered {
             }
 
             list.push_back(newcache);
+
+            mem::drop(list);
 
             cache.clear();
             cache.put(key.as_ref().to_owned(), value.as_ref().to_owned());
@@ -232,36 +240,40 @@ impl Backend for Tiered {
             Arc::new(Mutex::new(VecDeque::new()));
 
         let mut cl = Arc::clone(&cachelist);
-        unsafe {
-            thread::spawn(move || {
-                let addr = env::var("TIKV_ADDR").unwrap_or("127.0.0.1:2379".to_string());
-                if let Ok(dbdb) = DB::open(&opts, &path) {
-                    let t_db = dbdb;
-                    let t_rt = Runtime::new().unwrap();
-                    let t_tikv = t_rt.block_on(RawClient::new(vec![addr])).unwrap();
 
-                    loop {
-                        let mut cl = cl.lock().unwrap();
-                        let mut t_cl = cl;
-                        while !t_cl.is_empty() {
-                            println!("DEBUG: start to dump data to db!");
-                            if let Some(f) = t_cl.pop_front() {
-                                let mut batch = WriteBatch::default();
-                                let mut vec_batch = vec![];
-                                for (t_k, t_v) in f.iter() {
-                                    // let tkptr = t_k.as_ptr();
-                                    // let tvptr = t_v.as_ptr();
-                                    batch.put(t_k, t_v);
-                                    vec_batch.push((t_k.to_owned(), t_v.to_owned()));
-                                }
-                                t_db.write(batch);
-                                t_rt.block_on(async { t_tikv.batch_put(vec_batch).await.unwrap() })
-                            }
+        let arcdb = Arc::new(DB::open(&opts, &path).unwrap());
+        let mut tdb = Arc::clone(&arcdb);
+
+        thread::spawn(move || {
+            let addr = env::var("TIKV_ADDR").unwrap_or("127.0.0.1:2379".to_string());
+            println!("Trying to start a background thread!!!!!!!");
+            let mut dbdb = tdb;
+            println!("=================Thread started!=============");
+            let t_db = dbdb;
+            let t_rt = Runtime::new().unwrap();
+            let t_tikv = t_rt.block_on(RawClient::new(vec![addr])).unwrap();
+
+            loop {
+                let mut cl = cl.lock().unwrap();
+                let mut t_cl = cl;
+                while !t_cl.is_empty() {
+                    println!("DEBUG: start to dump data to db!");
+                    if let Some(f) = t_cl.pop_front() {
+                        let mut batch = WriteBatch::default();
+                        let mut vec_batch = vec![];
+                        for (t_k, t_v) in f.iter() {
+                            // let tkptr = t_k.as_ptr();
+                            // let tvptr = t_v.as_ptr();
+                            batch.put(t_k, t_v);
+                            vec_batch.push((t_k.to_owned(), t_v.to_owned()));
                         }
+                        t_db.write(batch);
+                        t_rt.block_on(async { t_tikv.batch_put(vec_batch).await.unwrap() })
                     }
                 }
-            });
-        }
+                mem::drop(t_cl);
+            }
+        });
 
         // let column_families: HashSet<String> = match DB::list_cf(&opts, &path) {
         //     Ok(cfs) => cfs.into_iter().filter(|n| n != "default").collect(),
@@ -278,9 +290,10 @@ impl Backend for Tiered {
         // } else {
         //     vec![ColumnFamilyDescriptor::new("default", Options::default())]
         // };
-        let mut cl = Arc::clone(&cachelist);
-        let mut opts = Options::default();
-        opts.create_if_missing(true);
+
+        // let mut cl = Arc::clone(&cachelist);
+        // let mut opts = Options::default();
+        // opts.create_if_missing(true);
 
         let path: PathBuf = savedpath.into();
         if !path.exists() {
@@ -288,13 +301,13 @@ impl Backend for Tiered {
         }
         Ok(Tiered {
             // inner: UnsafeCell::new(DB::open_cf_descriptors(&opts, &path, cfds)?),
-            inner: UnsafeCell::new(DB::open(&opts, &path).unwrap()),
+            inner: UnsafeCell::new(arcdb),
             restored: false,
             name,
             tikv,
             rt,
             activecache,
-            cachelist: cl,
+            cachelist: Arc::clone(&cachelist),
         })
     }
 
@@ -341,19 +354,20 @@ impl Backend for Tiered {
     }
 
     fn checkpoint(&self, checkpoint_path: &Path) -> Result<()> {
-        let db = self.db();
-        db.flush();
+        unimplemented!();
+        // let db = self.db();
+        // db.flush();
 
-        let checkpointer = Checkpoint::new(db);
+        // let checkpointer = Checkpoint::new(db);
 
-        if checkpoint_path.exists() {
-            // TODO: add a warning log here
-            // warn!(logger, "Checkpoint path {:?} exists, deleting");
-            fs::remove_dir_all(checkpoint_path)?
-        }
+        // if checkpoint_path.exists() {
+        //     // TODO: add a warning log here
+        //     // warn!(logger, "Checkpoint path {:?} exists, deleting");
+        //     fs::remove_dir_all(checkpoint_path)?
+        // }
 
-        // checkpointer.create_checkpoint(checkpoint_path);
-        Ok(())
+        // // checkpointer.create_checkpoint(checkpoint_path);
+        // Ok(())
     }
 
     fn register_value_handle<'s, T: Value, IK: Metakey, N: Metakey>(
