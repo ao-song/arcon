@@ -9,6 +9,8 @@ use std::io::Write;
 use std::thread;
 use std::{error::Error, iter, path::Path};
 
+use rand::distributions::Distribution;
+
 use arcon_state::*;
 
 fn make_key(i: usize, key_size: usize) -> Vec<u8> {
@@ -26,7 +28,7 @@ fn make_value(value_size: usize, rng: &fastrand::Rng) -> Vec<u8> {
 
 fn measure(
     mut out: Box<dyn Write>,
-    mut f: impl FnMut() -> Result<bool, Box<dyn Error>>,
+    mut f: impl FnMut() -> Result<(), Box<dyn Error>>,
 ) -> Result<(), Box<dyn Error>> {
     println!("Measurement started... ");
     // let num_ops = 1_000_000;
@@ -37,25 +39,12 @@ fn measure(
     let mut ops_done = 0usize;
     let mut hit = 0usize;
     for i in 0..num_ops {
-        match f() {
-            Ok(h) => {
-                if h {
-                    hit += 1;
-                }
-                ops_done += 1;
-            }
-            Err(_) => {}
-        }
-        // let h = f()?;
-        // ops_done += 1;
-        // if h {
-        //     hit += 1;
-        // }
+        f()?;
+        ops_done += 1;
     }
 
     let elapsed = start.elapsed();
     println!("Done! {:?}", elapsed);
-    println!("Hit rate! {:?}", hit as f64 / ops_done as f64);
     writeln!(
         out,
         "{},{}",
@@ -78,6 +67,8 @@ fn main() {
     let rng = fastrand::Rng::new();
     rng.seed(6);
 
+    let out = Box::new(std::io::stdout());
+
     // // fill the tikv with data
     // {
     //     println!("Fill in data..");
@@ -94,23 +85,24 @@ fn main() {
     //     }
     // }
 
-    println!("Testing basic get..");
+    // println!("Testing basic get..");
 
-    let key = make_key(100, key_size);
-    println!("{:?}", key);
-    println!("{:?}", tiered.get("test".to_string(), key.clone()));
-    println!("{:?}", tiered.activecache.borrow_mut().get(&key));
+    // let key = make_key(100, key_size);
+    // println!("{:?}", key);
+    // println!("{:?}", tiered.get("test".to_string(), key.clone()));
+    // println!("{:?}", tiered.activecache.borrow_mut().get(&key));
 
-    println!("Testing basic put..");
-    let key = make_key(100, key_size);
-    let value = make_value(value_size, &rng);
-    println!("Key is {:?}", key);
-    println!("Value is {:?}", value);
-    tiered.put("test".to_string(), key.clone(), value);
-    println!("{:?}", tiered.activecache.borrow_mut().get(&key));
+    // println!("Testing basic put..");
+    // let key = make_key(100, key_size);
+    // let value = make_value(value_size, &rng);
+    // println!("Key is {:?}", key);
+    // println!("Value is {:?}", value);
+    // tiered.put("test".to_string(), key.clone(), value);
+    // println!("{:?}", tiered.activecache.borrow_mut().get(&key));
 
-    println!("Testing massive read/write..");
-    let mut c = 0;
+    // println!("Testing massive read/write..");
+    // let mut c = 0;
+    println!("Init storage with {:?} entries", entry_num);
     for i in 0..entry_num {
         let key = make_key(i, key_size);
         let value = make_value(value_size, &rng);
@@ -118,37 +110,167 @@ fn main() {
         // c += 1;
         // println!("{}", c);
 
-        if let Ok(ret) = tiered.get("test".to_string(), key.clone()) {
-            let mut ac = tiered.activecache.borrow_mut();
-            let cret = ac.get(&key);
-            if *(cret.unwrap()) != ret.clone().unwrap() {
-                println!("cret is {:?}, ret is {:?}", cret, ret);
-            }
+        // if let Ok(ret) = tiered.get("test".to_string(), key.clone()) {
+        //     let mut ac = tiered.activecache.borrow_mut();
+        //     let cret = ac.get(&key);
+        //     if *(cret.unwrap()) != ret.clone().unwrap() {
+        //         println!("cret is {:?}, ret is {:?}", cret, ret);
+        //     }
+        // }
+    }
+
+    println!("Random read/write to prepare the system...");
+    {
+        for i in 0..entry_num {
+            let key = make_key(rng.usize(0..entry_num), key_size);
+            let value = make_value(value_size, &rng);
+            tiered.put("test".to_string(), key.clone(), value.clone());
         }
     }
 
     thread::sleep(time::Duration::from_millis(5000));
 
-    // tikv, rocksdb equal
-    println!("Testing tikv, rocksdb equal");
-    for i in 0..entry_num {
-        let key = make_key(i, key_size);
+    println!("Now measure on random read on tiered system...");
+    let _ret = measure(out, || {
+        let key = make_key(rng.usize(0..entry_num), key_size);
+        tiered.get("test".to_string(), key.clone());
+        Ok(())
+    });
 
-        if let Some(ret) = tiered
-            .rt
-            .block_on(async { tiered.tikv.get(key.clone().to_owned()).await.unwrap() })
-        {
-            println!("rettttt is {:?}", ret);
-            let ac = tiered.db_mut();
-            if let Ok(cret) = ac.get_pinned(&key) {
-                let cretunwrap = cret.unwrap();
-                println!("Get value from rocks as well {:?}!", cretunwrap.to_vec());
-                if *(cretunwrap.to_vec()) != ret.clone() {
-                    println!("ret is {:?}", ret);
-                }
-            }
+    println!("Now measure on random read on rocksdb...");
+    let out = Box::new(std::io::stdout());
+    let _ret = measure(out, || {
+        let key = make_key(rng.usize(0..entry_num), key_size);
+        tiered.db_mut().get_pinned(&key);
+        Ok(())
+    });
+
+    println!("Now measure on random read on tikv...");
+    let out = Box::new(std::io::stdout());
+    let _ret = measure(out, || {
+        let key = make_key(rng.usize(0..entry_num), key_size);
+        tiered.rt.block_on(async { tiered.tikv.get(key.clone().to_owned()).await.unwrap() });
+        Ok(())
+    });
+
+    println!("Now measure on random write on tiered system...");
+    let out = Box::new(std::io::stdout());
+    let _ret = measure(out, || {
+        let key = make_key(rng.usize(0..entry_num), key_size);
+        let value = make_value(value_size, &rng);
+        tiered.put("test".to_string(), key.clone(), value);
+        Ok(())
+    });
+
+    println!("Now measure on random write on rocksdb...");
+    let out = Box::new(std::io::stdout());
+    let _ret = measure(out, || {
+        let key = make_key(rng.usize(0..entry_num), key_size);
+        let value = make_value(value_size, &rng);
+        tiered.db_mut().put(&key, &value);
+        Ok(())
+    });
+
+    println!("Now measure on random write on tikv...");
+    let out = Box::new(std::io::stdout());
+    let _ret = measure(out, || {
+        let key = make_key(rng.usize(0..entry_num), key_size);
+        let value = make_value(value_size, &rng);
+        tiered.rt.block_on(async { tiered.tikv.put(key.to_owned(), value.to_owned()).await.unwrap() });
+        Ok(())
+    });
+
+    // ========================================ZIPF==================================================
+
+    println!("=========================NOW IT IS HOTKEY!!!===========================");
+
+    println!("Prepare the system for hotkey read/write...");
+    let mut rng = rand::thread_rng();
+    let mut zipf = zipf::ZipfDistribution::new(entry_num, 1.0).unwrap();
+
+    let fast_rng = fastrand::Rng::new();
+    fast_rng.seed(6);
+    {
+        for i in 0..entry_num {
+            let key = make_key(zipf.sample(&mut rng), key_size);
+            let value = make_value(value_size, &fast_rng);
+            tiered.put("test".to_string(), key.clone(), value.clone());
         }
     }
+
+    thread::sleep(time::Duration::from_millis(5000));
+
+    println!("Now measure on zipf read on tiered system...");
+    let out = Box::new(std::io::stdout());
+    let _ret = measure(out, || {
+        let key = make_key(zipf.sample(&mut rng), key_size);
+        tiered.get("test".to_string(), key.clone());
+        Ok(())
+    });
+
+    println!("Now measure on zipf read on rocksdb...");
+    let out = Box::new(std::io::stdout());
+    let _ret = measure(out, || {
+        let key = make_key(zipf.sample(&mut rng), key_size);
+        tiered.db_mut().get_pinned(&key);
+        Ok(())
+    });
+
+    println!("Now measure on zipf read on tikv...");
+    let out = Box::new(std::io::stdout());
+    let _ret = measure(out, || {
+        let key = make_key(zipf.sample(&mut rng), key_size);
+        tiered.rt.block_on(async { tiered.tikv.get(key.clone().to_owned()).await.unwrap() });
+        Ok(())
+    });
+
+    println!("Now measure on zipf write on tiered system...");
+    let out = Box::new(std::io::stdout());
+    let _ret = measure(out, || {
+        let key = make_key(zipf.sample(&mut rng), key_size);
+        let value = make_value(value_size, &fast_rng);
+        tiered.put("test".to_string(), key.clone(), value);
+        Ok(())
+    });
+
+    println!("Now measure on zipf write on rocksdb...");
+    let out = Box::new(std::io::stdout());
+    let _ret = measure(out, || {
+        let key = make_key(zipf.sample(&mut rng), key_size);
+        let value = make_value(value_size, &fast_rng);
+        tiered.db_mut().put(&key, &value);
+        Ok(())
+    });
+
+    println!("Now measure on zipf write on tikv...");
+    let out = Box::new(std::io::stdout());
+    let _ret = measure(out, || {
+        let key = make_key(zipf.sample(&mut rng), key_size);
+        let value = make_value(value_size, &fast_rng);
+        tiered.rt.block_on(async { tiered.tikv.put(key.to_owned(), value.to_owned()).await.unwrap() });
+        Ok(())
+    });
+
+    // // tikv, rocksdb equal
+    // println!("Testing tikv, rocksdb equal");
+    // for i in 0..entry_num {
+    //     let key = make_key(i, key_size);
+
+    //     if let Some(ret) = tiered
+    //         .rt
+    //         .block_on(async { tiered.tikv.get(key.clone().to_owned()).await.unwrap() })
+    //     {
+    //         println!("rettttt is {:?}", ret);
+    //         let ac = tiered.db_mut();
+    //         if let Ok(cret) = ac.get_pinned(&key) {
+    //             let cretunwrap = cret.unwrap();
+    //             println!("Get value from rocks as well {:?}!", cretunwrap.to_vec());
+    //             if *(cretunwrap.to_vec()) != ret.clone() {
+    //                 println!("ret is {:?}", ret);
+    //             }
+    //         }
+    //     }
+    // }
 }
 
 // cargo run --example eval

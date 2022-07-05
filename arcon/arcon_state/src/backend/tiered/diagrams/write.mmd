@@ -7,16 +7,15 @@ sequenceDiagram
     Application ->> Active Cache: Put Value
     Active Cache -->> Application: Ack
     opt Active Cache is full
-        Active Cache ->> Immutable Caches: Dump to Immutable Caches
+        Active Cache ->> Immutable Caches: Append to Immutable Caches
         Active Cache ->> Active Cache: Create a new Active Cache
     end
     par A thread batch write Immutable Caches to Embedded and External Database
         Immutable Caches ->> Embedded Database: Batch Write
         Immutable Caches ->> External Database: Batch Write
-        note over Immutable Caches, External Database: 2pc?
     end
     opt Checkpoint
-        Active Cache ->> Immutable Caches: Dump to Immutable Caches
+        Active Cache ->> Immutable Caches: Append to Immutable Caches
         Active Cache ->> Active Cache: Create a new Active Cache
         Immutable Caches ->> Embedded Database: Batch Write
         Immutable Caches ->> External Database: Batch Write
