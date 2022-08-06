@@ -79,17 +79,26 @@ impl Tiered {
         // Ok(self.db().get_pinned(key)?)
 
         if let Some(value) = self.activecache.borrow_mut().get(key.as_ref()) {
+            let l1_hit = env::var("TIERED_LAYER1").unwrap().parse::<u32>().unwrap() + 1;
+            env::set_var("TIERED_LAYER1", l1_hit.to_string());
             Ok(Some(value.to_owned()))
         } else {
             for cache in self.cachelist.lock().unwrap().iter_mut() {
                 if let Some(value) = cache.get(key.as_ref()) {
+                    let l1_hit = env::var("TIERED_LAYER1").unwrap().parse::<u32>().unwrap() + 1;
+                    env::set_var("TIERED_LAYER1", l1_hit.to_string());
                     return Ok(Some(value.to_owned()));
                 }
             }
 
             if let Ok(Some(value)) = self.db().get_pinned(key.as_ref().clone()) {
+                let l1_hit = env::var("TIERED_LAYER2").unwrap().parse::<u32>().unwrap() + 1;
+                env::set_var("TIERED_LAYER2", l1_hit.to_string());
                 return Ok(Some(value.to_vec()));
             }
+
+            let l1_hit = env::var("TIERED_LAYER3").unwrap().parse::<u32>().unwrap() + 1;
+            env::set_var("TIERED_LAYER3", l1_hit.to_string());
 
             Ok(self
                 .rt
