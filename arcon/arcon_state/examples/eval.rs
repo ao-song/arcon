@@ -271,13 +271,13 @@ fn main() {
 
     let fast_rng = fastrand::Rng::new();
     fast_rng.seed(6);
-    // {
-    //     for i in 0..entry_num {
-    //         let key = make_key(zipf.sample(&mut rng), key_size);
-    //         let value = make_value(value_size, &fast_rng);
-    //         tiered.put("test".to_string(), key.clone(), value.clone());
-    //     }
-    // }
+    {
+        for i in 0..entry_num {
+            let key = make_key(zipf.sample(&mut rng), key_size);
+            let value = make_value(value_size, &fast_rng);
+            tiered.put("test".to_string(), key.clone(), value.clone());
+        }
+    }
 
     thread::sleep(time::Duration::from_millis(5000));
 

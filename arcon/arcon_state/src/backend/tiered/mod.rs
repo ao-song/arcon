@@ -14,6 +14,7 @@ use lru::LruCache;
 use rocksdb::{
     checkpoint::Checkpoint, ColumnFamily, ColumnFamilyDescriptor, DBPinnableSlice,
     DBWithThreadMode, MultiThreaded, Options, SliceTransform, WriteBatch, WriteOptions,
+    BlockBasedOptions
 };
 use std::{
     borrow::{Borrow, BorrowMut},
@@ -230,7 +231,10 @@ impl Backend for Tiered {
         let tikv = rt.block_on(RawClient::new(vec![addr])).unwrap();
 
         let mut opts = Options::default();
+        let mut block_opts = BlockBasedOptions::default();
+        block_opts.disable_cache();
         opts.create_if_missing(true);
+        opts.set_block_based_table_factory(block_opts);
 
         let savedpath = path.clone();
 
