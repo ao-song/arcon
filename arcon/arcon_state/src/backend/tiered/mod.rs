@@ -125,7 +125,7 @@ impl Tiered {
     #[inline]
     pub fn flush_rocks(&self) -> Result<(), Box<dyn Error>> {
         unsafe {
-            Arc::get_mut(&mut *self.inner.get()).unwrap().flush();
+            self.db_mut().flush();
             Ok(())
         }
     }

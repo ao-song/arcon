@@ -175,22 +175,22 @@ fn main() {
     // println!("Testing massive read/write..");
     // let mut c = 0;
     ///////////////////////////////////////// EVALUATION !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    println!("Init storage with {:?} entries", entry_num);
-    for i in 0..entry_num {
-        let key = make_key(i, key_size);
-        let value = make_value(value_size, &rng);
-        tiered.put("test".to_string(), key.clone(), value.clone());
-        // c += 1;
-        // println!("{}", c);
+    // println!("Init storage with {:?} entries", entry_num);
+    // for i in 0..entry_num {
+    //     let key = make_key(i, key_size);
+    //     let value = make_value(value_size, &rng);
+    //     tiered.put("test".to_string(), key.clone(), value.clone());
+    //     // c += 1;
+    //     // println!("{}", c);
 
-        // if let Ok(ret) = tiered.get("test".to_string(), key.clone()) {
-        //     let mut ac = tiered.activecache.borrow_mut();
-        //     let cret = ac.get(&key);
-        //     if *(cret.unwrap()) != ret.clone().unwrap() {
-        //         println!("cret is {:?}, ret is {:?}", cret, ret);
-        //     }
-        // }
-    }
+    //     // if let Ok(ret) = tiered.get("test".to_string(), key.clone()) {
+    //     //     let mut ac = tiered.activecache.borrow_mut();
+    //     //     let cret = ac.get(&key);
+    //     //     if *(cret.unwrap()) != ret.clone().unwrap() {
+    //     //         println!("cret is {:?}, ret is {:?}", cret, ret);
+    //     //     }
+    //     // }
+    // }
 
     println!("Random read/write to prepare the system...");
     {
