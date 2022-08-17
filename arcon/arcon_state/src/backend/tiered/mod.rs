@@ -29,6 +29,13 @@ use std::{
     thread,
 };
 
+extern crate fastrand;
+extern crate rand;
+
+use core::time;
+use std::io::Write;
+use std::{error::Error, iter};
+
 unsafe impl Send for Tiered {}
 unsafe impl Sync for Tiered {}
 
@@ -49,6 +56,48 @@ fn default_write_opts() -> WriteOptions {
     let mut res = WriteOptions::default();
     res.disable_wal(true);
     res
+}
+
+fn make_key(i: usize, key_size: usize) -> Vec<u8> {
+    i.to_le_bytes()
+        .iter()
+        .copied()
+        .cycle()
+        .take(key_size)
+        .collect()
+}
+
+fn make_value(value_size: usize, rng: &fastrand::Rng) -> Vec<u8> {
+    iter::repeat_with(|| rng.u8(..)).take(value_size).collect()
+}
+
+fn measure(
+    mut out: Box<dyn Write>,
+    mut f: impl FnMut() -> Result<(), Box<dyn Error>>,
+) -> Result<(), Box<dyn Error>> {
+    println!("Measurement started... ");
+    // let num_ops = 1_000_000;
+    let num_ops = 10_000;
+
+    let start = std::time::Instant::now();
+
+    let mut ops_done = 0usize;
+    let mut hit = 0usize;
+    for i in 0..num_ops {
+        f()?;
+        ops_done += 1;
+    }
+
+    let elapsed = start.elapsed();
+    println!("Done! {:?}", elapsed);
+    writeln!(
+        out,
+        "{},{}",
+        elapsed.as_nanos() / (ops_done as u128),
+        ops_done
+    )?;
+
+    Ok(())
 }
 
 impl Tiered {
@@ -72,6 +121,90 @@ impl Tiered {
     //             cf_name: cf_name.to_string(),
     //         })
     // }
+
+    #[inline]
+    pub fn flush_rocks(&self) -> Result<(), Box<dyn Error>> {
+        unsafe {
+            Arc::get_mut(&mut *self.inner.get()).unwrap().flush();
+            Ok(())
+        }
+    }
+
+    #[inline]
+    pub fn layers_bench(&self) -> Result<(), Box<dyn Error>> {
+        let rng = fastrand::Rng::new();
+        rng.seed(6);
+        let key_size = 80;
+        let value_size = 320;
+        let out = Box::new(std::io::stdout());
+
+        println!("Now benchmark on cache layer...");
+        let mut layer1 = LruCache::new(5000);
+        for i in 0..5000 {
+            let key = make_key(rng.usize(0..5000), key_size);
+            let value = make_value(value_size, &rng);
+            layer1.put(key, value);
+        }
+
+        let _ret = measure(out, || {
+            let key = make_key(rng.usize(0..5000), key_size);
+            layer1.get(&key);
+            Ok(())
+        });
+
+        println!("Now benchmark on embedded layer...");
+        let mut opts = Options::default();
+        let mut block_opts = BlockBasedOptions::default();
+        block_opts.disable_cache();
+        opts.create_if_missing(true);
+        opts.set_block_based_table_factory(&block_opts);
+
+        let savedpath = "/home/ao/tiered";
+
+        let path: PathBuf = savedpath.into();
+        if !path.exists() {
+            fs::create_dir_all(&path)?;
+        }
+        let layer2 = DB::open(&opts, &path).unwrap();
+        for i in 0..5000 {
+            let key = make_key(rng.usize(0..5000), key_size);
+            let value = make_value(value_size, &rng);
+            layer2.put(&key, &value);
+        }
+
+        layer2.flush();
+
+        let out = Box::new(std::io::stdout());
+
+        let _ret = measure(out, || {
+            let key = make_key(rng.usize(0..5000), key_size);
+            layer2.get_pinned(&key);
+            Ok(())
+        });
+
+
+        println!("Now benchmark on external layer...");
+        let rt = Runtime::new().unwrap();
+        let addr = env::var("TIKV_ADDR").unwrap_or("10.166.0.5:2379".to_string());
+        let layer3 = rt.block_on(RawClient::new(vec![addr])).unwrap();
+
+        for i in 0..5000 {
+            let key = make_key(rng.usize(0..5000), key_size);
+            let value = make_value(value_size, &rng);
+            rt.block_on(async { layer3.put(key.to_owned(), value.to_owned()).await.unwrap() });
+        }
+
+        let out = Box::new(std::io::stdout());
+
+        let _ret = measure(out, || {
+            let key = make_key(rng.usize(0..5000), key_size);
+            rt.block_on(async { layer3.get(key.clone().to_owned()).await.unwrap() });
+            Ok(())
+        });
+
+        Ok(())
+
+    }
 
     #[inline]
     pub fn get(&self, cf_name: impl AsRef<str>, key: impl AsRef<[u8]>) -> Result<Option<Vec<u8>>> {
@@ -227,14 +360,14 @@ impl Backend for Tiered {
         // tikv operations
         let rt = Runtime::new().unwrap();
 
-        let addr = env::var("TIKV_ADDR").unwrap_or("127.0.0.1:2379".to_string());
+        let addr = env::var("TIKV_ADDR").unwrap_or("10.166.0.5:2379".to_string());
         let tikv = rt.block_on(RawClient::new(vec![addr])).unwrap();
 
         let mut opts = Options::default();
         let mut block_opts = BlockBasedOptions::default();
         block_opts.disable_cache();
         opts.create_if_missing(true);
-        opts.set_block_based_table_factory(block_opts);
+        opts.set_block_based_table_factory(&block_opts);
 
         let savedpath = path.clone();
 
@@ -258,7 +391,7 @@ impl Backend for Tiered {
         let mut tdb = Arc::clone(&arcdb);
 
         thread::spawn(move || {
-            let addr = env::var("TIKV_ADDR").unwrap_or("127.0.0.1:2379".to_string());
+            let addr = env::var("TIKV_ADDR").unwrap_or("10.166.0.5:2379".to_string());
             println!("Trying to start a background thread!!!!!!!");
             let mut dbdb = tdb;
             println!("=================Thread started!=============");
