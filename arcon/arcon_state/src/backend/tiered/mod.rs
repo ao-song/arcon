@@ -159,7 +159,7 @@ impl Tiered {
         opts.create_if_missing(true);
         opts.set_block_based_table_factory(&block_opts);
 
-        let savedpath = "/home/ao/tiered";
+        let savedpath = "/home/ao/bench";
 
         let path: PathBuf = savedpath.into();
         if !path.exists() {
