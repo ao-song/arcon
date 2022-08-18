@@ -32,8 +32,8 @@ fn measure(
     mut f: impl FnMut() -> Result<(), Box<dyn Error>>,
 ) -> Result<(), Box<dyn Error>> {
     println!("Measurement started... ");
-    // let num_ops = 1_000_000;
-    let num_ops = 10_000;
+    let num_ops = 1_000_000;
+    // let num_ops = 10_000;
 
     let start = std::time::Instant::now();
 
