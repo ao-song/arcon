@@ -204,9 +204,6 @@ fn main() {
         .parse()
         .unwrap_or(10_000);
 
-    println!("Now measure tikv batch time!");
-    let start = std::time::Instant::now();
-
     let mut vec_batch = vec![];
     for i in 0..cache_size {
         let key = make_key(i, key_size);
@@ -214,7 +211,14 @@ fn main() {
         vec_batch.push((key.to_owned(), value.to_owned()));
     }
 
-    tiered.rt.block_on(async { tiered.tikv.batch_put(vec_batch).await.unwrap() });
+    let iteration = entry_num / cache_size;
+
+    println!("Now measure tikv batch time!");
+    let start = std::time::Instant::now();
+
+    for i in 0..iteration {
+        tiered.rt.block_on(async { tiered.tikv.batch_put(vec_batch.clone()).await.unwrap() });
+    }
 
     let elapsed = start.elapsed();
 
