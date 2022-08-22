@@ -134,6 +134,10 @@ impl Tiered {
     pub fn flush(&self) -> Result<(), Box<dyn Error>> {
         let mut cache = self.activecache.borrow_mut();
         let mut list = self.cachelist.lock().unwrap();
+        let cache_size: usize = env::var("CACHE_SIZE")
+            .unwrap_or("10_000".to_string())
+            .parse()
+            .unwrap_or(10_000);
         let mut newcache: LruCache<Vec<u8>, Vec<u8>> = LruCache::new(cache_size);
         for (kk, vv) in cache.iter() {
             newcache.put(kk.to_owned(), vv.to_owned());
