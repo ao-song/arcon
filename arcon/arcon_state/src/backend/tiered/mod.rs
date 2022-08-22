@@ -131,6 +131,33 @@ impl Tiered {
     }
 
     #[inline]
+    pub fn flush(&self) -> Result<(), Box<dyn Error>> {
+        let mut cache = self.activecache.borrow_mut();
+        let mut list = self.cachelist.lock().unwrap();
+        let mut newcache: LruCache<Vec<u8>, Vec<u8>> = LruCache::new(cache_size);
+        for (kk, vv) in cache.iter() {
+            newcache.put(kk.to_owned(), vv.to_owned());
+        }
+        list.push_back(newcache);
+        mem::drop(list);
+
+        loop {
+            let mut list = self.cachelist.lock().unwrap();
+
+            if list.is_empty() {
+                mem::drop(list);
+                break;
+            }
+
+            println!("list not empty!");
+
+            mem::drop(list);
+        }
+
+        Ok(())
+    }
+
+    #[inline]
     pub fn layers_bench(&self) -> Result<(), Box<dyn Error>> {
         let rng = fastrand::Rng::new();
         rng.seed(6);
