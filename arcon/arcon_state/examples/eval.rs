@@ -222,7 +222,7 @@ fn main() {
 
     let elapsed = start.elapsed();
 
-    println!("Done! {:?}", elapsed.as_nanos() / (cache_size as u128));
+    println!("Done! {:?}", elapsed.as_nanos() / (entry_num as u128));
 
 
 
