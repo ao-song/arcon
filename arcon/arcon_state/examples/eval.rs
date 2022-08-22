@@ -214,7 +214,7 @@ fn main() {
         vec_batch.push((key.to_owned(), value.to_owned()));
     }
 
-    tiered.rt..block_on(async { tiered.tikv.batch_put(vec_batch).await.unwrap() });
+    tiered.rt.block_on(async { tiered.tikv.batch_put(vec_batch).await.unwrap() });
 
     let elapsed = start.elapsed();
 
