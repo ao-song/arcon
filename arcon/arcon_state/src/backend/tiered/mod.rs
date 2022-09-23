@@ -12,9 +12,9 @@ use tokio::runtime::Runtime;
 use lru::LruCache;
 
 use rocksdb::{
-    checkpoint::Checkpoint, ColumnFamily, ColumnFamilyDescriptor, DBPinnableSlice,
-    DBWithThreadMode, MultiThreaded, Options, SliceTransform, WriteBatch, WriteOptions,
-    BlockBasedOptions
+    checkpoint::Checkpoint, BlockBasedOptions, ColumnFamily, ColumnFamilyDescriptor,
+    DBPinnableSlice, DBWithThreadMode, IteratorMode, MultiThreaded, Options, SliceTransform,
+    WriteBatch, WriteOptions,
 };
 use std::{
     borrow::{Borrow, BorrowMut},
@@ -213,7 +213,6 @@ impl Tiered {
             Ok(())
         });
 
-
         println!("Now benchmark on external layer...");
         let rt = Runtime::new().unwrap();
         let addr = env::var("TIKV_ADDR").unwrap_or("10.166.0.5:2379".to_string());
@@ -234,7 +233,6 @@ impl Tiered {
         });
 
         Ok(())
-
     }
 
     #[inline]
@@ -421,6 +419,8 @@ impl Backend for Tiered {
         let arcdb = Arc::new(DB::open(&opts, &path).unwrap());
         let mut tdb = Arc::clone(&arcdb);
 
+        let t_cache_size = cache_size as i32;
+
         thread::spawn(move || {
             let addr = env::var("TIKV_ADDR").unwrap_or("10.166.0.5:2379".to_string());
             println!("Trying to start a background thread!!!!!!!");
@@ -429,6 +429,9 @@ impl Backend for Tiered {
             let t_db = dbdb;
             let t_rt = Runtime::new().unwrap();
             let t_tikv = t_rt.block_on(RawClient::new(vec![addr])).unwrap();
+
+            let db_cap = 1_000_000 * 0.3 as i32;
+            let mut db_cap_now = 0;
 
             loop {
                 let mut cl = cl.lock().unwrap();
@@ -445,7 +448,22 @@ impl Backend for Tiered {
                             vec_batch.push((t_k.to_owned(), t_v.to_owned()));
                         }
                         t_db.write(batch);
-                        t_rt.block_on(async { t_tikv.batch_put(vec_batch).await.unwrap() })
+                        t_rt.block_on(async { t_tikv.batch_put(vec_batch).await.unwrap() });
+                        db_cap_now += t_cache_size;
+
+                        while db_cap_now > db_cap {
+                            let mut db_iter = t_db.iterator(IteratorMode::Start);
+                            let mut t_cc = 0;
+                            for t_item in db_iter {
+                                let (t_d_k, t_d_v) = t_item;
+                                t_db.delete(t_d_k);
+                                t_cc += 1;
+                                if t_cc >= t_cache_size {
+                                    break;
+                                }
+                            }
+                            db_cap_now -= t_cache_size
+                        }
                     }
                 }
                 mem::drop(t_cl);
