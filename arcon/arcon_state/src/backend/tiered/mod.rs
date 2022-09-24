@@ -449,9 +449,13 @@ impl Backend for Tiered {
 
                         let mut db_count = t_db.iterator(IteratorMode::Start).count() as i32;
                         let mut db_iter = t_db.iterator(IteratorMode::Start);
-                        while db_count + t_cache_size > db_cap {
-                            let (t_d_k, t_d_v) = db_iter.next().unwrap();
-                            t_db.delete(t_d_k);
+
+                        for item in db_iter {
+                            let (t_b_k, t_b_v) = item;
+                            t_db.delete(t_b_k);
+                            if db_count + t_cache_size < db_cap {
+                                break;
+                            }
                         }
 
                         t_db.write(batch);
