@@ -431,7 +431,6 @@ impl Backend for Tiered {
             let t_tikv = t_rt.block_on(RawClient::new(vec![addr])).unwrap();
 
             let db_cap = 1_000_000 * 0.3 as i32;
-            let mut db_cap_now = 0;
 
             loop {
                 let mut cl = cl.lock().unwrap();
@@ -447,23 +446,16 @@ impl Backend for Tiered {
                             batch.put(t_k, t_v);
                             vec_batch.push((t_k.to_owned(), t_v.to_owned()));
                         }
+
+                        let mut db_count = t_db.iterator(IteratorMode::Start).count() as i32;
+                        let mut db_iter = t_db.iterator(IteratorMode::Start);
+                        while db_count + t_cache_size > db_cap {
+                            let (t_d_k, t_d_v) = db_iter.next().unwrap();
+                            t_db.delete(t_d_k);
+                        }
+
                         t_db.write(batch);
                         t_rt.block_on(async { t_tikv.batch_put(vec_batch).await.unwrap() });
-                        db_cap_now += t_cache_size;
-
-                        while db_cap_now > db_cap {
-                            let mut db_iter = t_db.iterator(IteratorMode::Start);
-                            let mut t_cc = 0;
-                            for t_item in db_iter {
-                                let (t_d_k, t_d_v) = t_item;
-                                t_db.delete(t_d_k);
-                                t_cc += 1;
-                                if t_cc >= t_cache_size {
-                                    break;
-                                }
-                            }
-                            db_cap_now -= t_cache_size
-                        }
                     }
                 }
                 mem::drop(t_cl);
