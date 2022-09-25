@@ -282,20 +282,20 @@ fn main() {
         Ok(())
     });
 
-    println!("Now measure on random write on tikv...");
-    let out = Box::new(std::io::stdout());
-    let _ret = measure(out, || {
-        let key = make_key(rng.usize(0..entry_num), key_size);
-        let value = make_value(value_size, &rng);
-        tiered.rt.block_on(async {
-            tiered
-                .tikv
-                .put(key.to_owned(), value.to_owned())
-                .await
-                .unwrap()
-        });
-        Ok(())
-    });
+    // println!("Now measure on random write on tikv...");
+    // let out = Box::new(std::io::stdout());
+    // let _ret = measure(out, || {
+    //     let key = make_key(rng.usize(0..entry_num), key_size);
+    //     let value = make_value(value_size, &rng);
+    //     tiered.rt.block_on(async {
+    //         tiered
+    //             .tikv
+    //             .put(key.to_owned(), value.to_owned())
+    //             .await
+    //             .unwrap()
+    //     });
+    //     Ok(())
+    // });
 
     // ========================================ZIPF==================================================
 
@@ -374,20 +374,20 @@ fn main() {
         Ok(())
     });
 
-    println!("Now measure on zipf write on tikv...");
-    let out = Box::new(std::io::stdout());
-    let _ret = measure(out, || {
-        let key = make_key(zipf.sample(&mut rng), key_size);
-        let value = make_value(value_size, &fast_rng);
-        tiered.rt.block_on(async {
-            tiered
-                .tikv
-                .put(key.to_owned(), value.to_owned())
-                .await
-                .unwrap()
-        });
-        Ok(())
-    });
+    // println!("Now measure on zipf write on tikv...");
+    // let out = Box::new(std::io::stdout());
+    // let _ret = measure(out, || {
+    //     let key = make_key(zipf.sample(&mut rng), key_size);
+    //     let value = make_value(value_size, &fast_rng);
+    //     tiered.rt.block_on(async {
+    //         tiered
+    //             .tikv
+    //             .put(key.to_owned(), value.to_owned())
+    //             .await
+    //             .unwrap()
+    //     });
+    //     Ok(())
+    // });
 
     // // tikv, rocksdb equal
     // println!("Testing tikv, rocksdb equal");
