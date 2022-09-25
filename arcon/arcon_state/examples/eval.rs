@@ -76,20 +76,20 @@ fn main() {
 
     ///////////////////////////////////////// WARM UP EVAL !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     // fill the tikv with data
-    // {
-    //     println!("Fill in data in TiKV..");
-    //     for i in 0..entry_num {
-    //         let key = make_key(i, key_size);
-    //         let value = make_value(value_size, &rng);
-    //         let _ret = tiered.rt.block_on(async {
-    //             tiered
-    //                 .tikv
-    //                 .put(key.to_owned(), key.to_owned())
-    //                 .await
-    //                 .unwrap()
-    //         });
-    //     }
-    // }
+    {
+        println!("Fill in data in TiKV..");
+        for i in 0..entry_num {
+            let key = make_key(i, key_size);
+            let value = make_value(value_size, &rng);
+            let _ret = tiered.rt.block_on(async {
+                tiered
+                    .tikv
+                    .put(key.to_owned(), key.to_owned())
+                    .await
+                    .unwrap()
+            });
+        }
+    }
 
     // // let mut count = 0;
     // // let mut timepassed = 0;
@@ -221,14 +221,14 @@ fn main() {
 
     // println!("Done! {:?}", elapsed.as_nanos() / (entry_num as u128));
 
-    println!("Random read/write to prepare the system...");
-    {
-        for i in 0..entry_num {
-            let key = make_key(rng.usize(0..entry_num), key_size);
-            let value = make_value(value_size, &rng);
-            tiered.put("test".to_string(), key.clone(), value.clone());
-        }
-    }
+    // println!("Random read/write to prepare the system...");
+    // {
+    //     for i in 0..entry_num {
+    //         let key = make_key(rng.usize(0..entry_num), key_size);
+    //         let value = make_value(value_size, &rng);
+    //         tiered.put("test".to_string(), key.clone(), value.clone());
+    //     }
+    // }
 
     thread::sleep(time::Duration::from_millis(5000));
 
