@@ -424,8 +424,11 @@ impl Backend for Tiered {
 
         let ttl = Duration::new(ttl_dur as u64, 0);
 
+        println!("create db with ttl!!!!!!!");
         let arcdb = Arc::new(DB::open_with_ttl(&opts, &path, ttl).unwrap());
         let mut tdb = Arc::clone(&arcdb);
+
+        println!("opened db with ttl!!!!!!!");
 
         let t_cache_size = cache_size as i32;
 
