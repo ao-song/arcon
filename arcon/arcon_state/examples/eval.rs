@@ -81,13 +81,7 @@ fn main() {
         for i in 0..entry_num {
             let key = make_key(i, key_size);
             let value = make_value(value_size, &rng);
-            let _ret = tiered.rt.block_on(async {
-                tiered
-                    .tikv
-                    .put(key.to_owned(), value.to_owned())
-                    .await
-                    .unwrap()
-            });
+            tiered.put("test".to_string(), key, value);
         }
     }
 
