@@ -27,6 +27,7 @@ use std::{
     ptr,
     sync::{Arc, Mutex},
     thread,
+    time::Duration,
 };
 
 extern crate fastrand;
@@ -416,7 +417,14 @@ impl Backend for Tiered {
 
         let mut cl = Arc::clone(&cachelist);
 
-        let arcdb = Arc::new(DB::open(&opts, &path).unwrap());
+        let ttl_dur: usize = env::var("ROCKS_TTL")
+            .unwrap_or("60".to_string())
+            .parse()
+            .unwrap_or(60);
+
+        let ttl = Duration::new(ttl_dur as u64, 0);
+
+        let arcdb = Arc::new(DB::open_with_ttl(&opts, &path, ttl).unwrap());
         let mut tdb = Arc::clone(&arcdb);
 
         let t_cache_size = cache_size as i32;
@@ -447,16 +455,16 @@ impl Backend for Tiered {
                             vec_batch.push((t_k.to_owned(), t_v.to_owned()));
                         }
 
-                        let mut db_count = t_db.iterator(IteratorMode::Start).count() as i32;
-                        let mut db_iter = t_db.iterator(IteratorMode::Start);
+                        // let mut db_count = t_db.iterator(IteratorMode::Start).count() as i32;
+                        // let mut db_iter = t_db.iterator(IteratorMode::Start);
 
-                        for item in db_iter {
-                            let (t_b_k, t_b_v) = item;
-                            t_db.delete(t_b_k);
-                            if db_count + t_cache_size < db_cap {
-                                break;
-                            }
-                        }
+                        // for item in db_iter {
+                        //     let (t_b_k, t_b_v) = item;
+                        //     t_db.delete(t_b_k);
+                        //     if db_count + t_cache_size < db_cap {
+                        //         break;
+                        //     }
+                        // }
 
                         t_db.write(batch);
                         t_rt.block_on(async { t_tikv.batch_put(vec_batch).await.unwrap() });
