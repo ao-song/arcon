@@ -84,7 +84,7 @@ fn main() {
             let _ret = tiered.rt.block_on(async {
                 tiered
                     .tikv
-                    .put(key.to_owned(), key.to_owned())
+                    .put(key.to_owned(), value.to_owned())
                     .await
                     .unwrap()
             });
