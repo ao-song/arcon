@@ -246,23 +246,23 @@ fn main() {
     println!("layer2 hit times: {:?}", env::var("TIERED_LAYER2").unwrap());
     println!("layer3 hit times: {:?}", env::var("TIERED_LAYER3").unwrap());
 
-    println!("Now measure on random read on rocksdb...");
-    let out = Box::new(std::io::stdout());
-    let _ret = measure(out, || {
-        let key = make_key(rng.usize(0..entry_num), key_size);
-        tiered.db_mut().get_pinned(&key);
-        Ok(())
-    });
+    // println!("Now measure on random read on rocksdb...");
+    // let out = Box::new(std::io::stdout());
+    // let _ret = measure(out, || {
+    //     let key = make_key(rng.usize(0..entry_num), key_size);
+    //     tiered.db_mut().get_pinned(&key);
+    //     Ok(())
+    // });
 
-    println!("Now measure on random read on tikv...");
-    let out = Box::new(std::io::stdout());
-    let _ret = measure(out, || {
-        let key = make_key(rng.usize(0..entry_num), key_size);
-        tiered
-            .rt
-            .block_on(async { tiered.tikv.get(key.clone().to_owned()).await.unwrap() });
-        Ok(())
-    });
+    // println!("Now measure on random read on tikv...");
+    // let out = Box::new(std::io::stdout());
+    // let _ret = measure(out, || {
+    //     let key = make_key(rng.usize(0..entry_num), key_size);
+    //     tiered
+    //         .rt
+    //         .block_on(async { tiered.tikv.get(key.clone().to_owned()).await.unwrap() });
+    //     Ok(())
+    // });
 
     println!("Now measure on random write on tiered system...");
     let out = Box::new(std::io::stdout());
@@ -273,14 +273,14 @@ fn main() {
         Ok(())
     });
 
-    println!("Now measure on random write on rocksdb...");
-    let out = Box::new(std::io::stdout());
-    let _ret = measure(out, || {
-        let key = make_key(rng.usize(0..entry_num), key_size);
-        let value = make_value(value_size, &rng);
-        tiered.db_mut().put(&key, &value);
-        Ok(())
-    });
+    // println!("Now measure on random write on rocksdb...");
+    // let out = Box::new(std::io::stdout());
+    // let _ret = measure(out, || {
+    //     let key = make_key(rng.usize(0..entry_num), key_size);
+    //     let value = make_value(value_size, &rng);
+    //     tiered.db_mut().put(&key, &value);
+    //     Ok(())
+    // });
 
     // println!("Now measure on random write on tikv...");
     // let out = Box::new(std::io::stdout());
@@ -346,15 +346,15 @@ fn main() {
         Ok(())
     });
 
-    println!("Now measure on zipf read on tikv...");
-    let out = Box::new(std::io::stdout());
-    let _ret = measure(out, || {
-        let key = make_key(zipf.sample(&mut rng), key_size);
-        tiered
-            .rt
-            .block_on(async { tiered.tikv.get(key.clone().to_owned()).await.unwrap() });
-        Ok(())
-    });
+    // println!("Now measure on zipf read on tikv...");
+    // let out = Box::new(std::io::stdout());
+    // let _ret = measure(out, || {
+    //     let key = make_key(zipf.sample(&mut rng), key_size);
+    //     tiered
+    //         .rt
+    //         .block_on(async { tiered.tikv.get(key.clone().to_owned()).await.unwrap() });
+    //     Ok(())
+    // });
 
     println!("Now measure on zipf write on tiered system...");
     let out = Box::new(std::io::stdout());
@@ -365,14 +365,14 @@ fn main() {
         Ok(())
     });
 
-    println!("Now measure on zipf write on rocksdb...");
-    let out = Box::new(std::io::stdout());
-    let _ret = measure(out, || {
-        let key = make_key(zipf.sample(&mut rng), key_size);
-        let value = make_value(value_size, &fast_rng);
-        tiered.db_mut().put(&key, &value);
-        Ok(())
-    });
+    // println!("Now measure on zipf write on rocksdb...");
+    // let out = Box::new(std::io::stdout());
+    // let _ret = measure(out, || {
+    //     let key = make_key(zipf.sample(&mut rng), key_size);
+    //     let value = make_value(value_size, &fast_rng);
+    //     tiered.db_mut().put(&key, &value);
+    //     Ok(())
+    // });
 
     // println!("Now measure on zipf write on tikv...");
     // let out = Box::new(std::io::stdout());
